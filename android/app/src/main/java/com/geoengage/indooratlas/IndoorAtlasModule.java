@@ -12,6 +12,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import com.indooratlas.android.sdk.IALocation;
@@ -51,27 +52,29 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void initialize(String apiKey, String apiSecret, Promise promise) {
-        try {
-            Log.d(TAG, "Initializing Indoor Atlas SDK...");
-            
-            // Create Bundle with API credentials
-            Bundle credentials = new Bundle();
-            credentials.putString(IALocationManager.EXTRA_API_KEY, apiKey);
-            credentials.putString(IALocationManager.EXTRA_API_SECRET, apiSecret);
-            
-            // Create location manager with credentials
-            locationManager = IALocationManager.create(reactContext, credentials);
-            
-            // Register region listener for geofencing
-            locationManager.registerRegionListener(regionListener);
-            
-            Log.d(TAG, "Indoor Atlas SDK initialized successfully");
-            promise.resolve(true);
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to initialize Indoor Atlas SDK: " + e.getMessage());
-            promise.reject("INIT_ERROR", "Failed to initialize Indoor Atlas: " + e.getMessage(), e);
-        }
+        UiThreadUtil.runOnUiThread(() -> {
+            try {
+                Log.d(TAG, "Initializing Indoor Atlas SDK...");
+                
+                // Create Bundle with API credentials
+                Bundle credentials = new Bundle();
+                credentials.putString(IALocationManager.EXTRA_API_KEY, apiKey);
+                credentials.putString(IALocationManager.EXTRA_API_SECRET, apiSecret);
+                
+                // Create location manager with credentials
+                locationManager = IALocationManager.create(reactContext, credentials);
+                
+                // Register region listener for geofencing
+                locationManager.registerRegionListener(regionListener);
+                
+                Log.d(TAG, "Indoor Atlas SDK initialized successfully");
+                promise.resolve(true);
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to initialize Indoor Atlas SDK: " + e.getMessage());
+                promise.reject("INIT_ERROR", "Failed to initialize Indoor Atlas: " + e.getMessage(), e);
+            }
+        });
     }
     
     /**
@@ -79,38 +82,40 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void startPositioning(Promise promise) {
-        try {
-            if (locationManager == null) {
-                promise.reject("NOT_INITIALIZED", "Indoor Atlas SDK not initialized. Call initialize() first.");
-                return;
+        UiThreadUtil.runOnUiThread(() -> {
+            try {
+                if (locationManager == null) {
+                    promise.reject("NOT_INITIALIZED", "Indoor Atlas SDK not initialized. Call initialize() first.");
+                    return;
+                }
+                
+                if (isPositioning) {
+                    Log.w(TAG, "Positioning already started");
+                    promise.resolve(false);
+                    return;
+                }
+                
+                // Request location updates with high accuracy
+                IALocationRequest request = IALocationRequest.create();
+                request.setFastestInterval(1000); // 1 second
+                request.setSmallestDisplacement(0.5f); // 0.5 meters
+                
+                boolean success = locationManager.requestLocationUpdates(request, locationListener);
+                
+                if (!success) {
+                    Log.w(TAG, "Failed to request location updates");
+                }
+                
+                isPositioning = true;
+                
+                Log.d(TAG, "Positioning started");
+                promise.resolve(true);
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to start positioning: " + e.getMessage());
+                promise.reject("START_ERROR", "Failed to start positioning: " + e.getMessage(), e);
             }
-            
-            if (isPositioning) {
-                Log.w(TAG, "Positioning already started");
-                promise.resolve(false);
-                return;
-            }
-            
-            // Request location updates with high accuracy
-            IALocationRequest request = IALocationRequest.create();
-            request.setFastestInterval(1000); // 1 second
-            request.setSmallestDisplacement(0.5f); // 0.5 meters
-            
-            boolean success = locationManager.requestLocationUpdates(request, locationListener);
-            
-            if (!success) {
-                Log.w(TAG, "Failed to request location updates");
-            }
-            
-            isPositioning = true;
-            
-            Log.d(TAG, "Positioning started");
-            promise.resolve(true);
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start positioning: " + e.getMessage());
-            promise.reject("START_ERROR", "Failed to start positioning: " + e.getMessage(), e);
-        }
+        });
     }
     
     /**
@@ -118,33 +123,35 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void stopPositioning(Promise promise) {
-        try {
-            if (locationManager == null) {
-                promise.reject("NOT_INITIALIZED", "Indoor Atlas SDK not initialized.");
-                return;
+        UiThreadUtil.runOnUiThread(() -> {
+            try {
+                if (locationManager == null) {
+                    promise.reject("NOT_INITIALIZED", "Indoor Atlas SDK not initialized.");
+                    return;
+                }
+                
+                if (!isPositioning) {
+                    Log.w(TAG, "Positioning not started");
+                    promise.resolve(false);
+                    return;
+                }
+                
+                boolean success = locationManager.removeLocationUpdates(locationListener);
+                
+                if (!success) {
+                    Log.w(TAG, "Failed to remove location updates");
+                }
+                
+                isPositioning = false;
+                
+                Log.d(TAG, "Positioning stopped");
+                promise.resolve(true);
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to stop positioning: " + e.getMessage());
+                promise.reject("STOP_ERROR", "Failed to stop positioning: " + e.getMessage(), e);
             }
-            
-            if (!isPositioning) {
-                Log.w(TAG, "Positioning not started");
-                promise.resolve(false);
-                return;
-            }
-            
-            boolean success = locationManager.removeLocationUpdates(locationListener);
-            
-            if (!success) {
-                Log.w(TAG, "Failed to remove location updates");
-            }
-            
-            isPositioning = false;
-            
-            Log.d(TAG, "Positioning stopped");
-            promise.resolve(true);
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to stop positioning: " + e.getMessage());
-            promise.reject("STOP_ERROR", "Failed to stop positioning: " + e.getMessage(), e);
-        }
+        });
     }
     
     /**
@@ -152,35 +159,37 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void getCurrentLocation(Promise promise) {
-        try {
-            if (locationManager == null) {
-                promise.reject("NOT_INITIALIZED", "Indoor Atlas SDK not initialized.");
-                return;
-            }
-            
-            // Request immediate location update
-            locationManager.requestLocationUpdates(
-                IALocationRequest.create(),
-                new IALocationListener() {
-                    @Override
-                    public void onLocationChanged(IALocation location) {
-                        WritableMap locationData = createLocationMap(location);
-                        promise.resolve(locationData);
-                        locationManager.removeLocationUpdates(this);
-                    }
-                    
-                    @Override
-                    public void onStatusChanged(String provider, int status, Bundle extras) {
-                        // Handle status changes if needed
-                        Log.d(TAG, "Location status changed: " + provider + " status=" + status);
-                    }
+        UiThreadUtil.runOnUiThread(() -> {
+            try {
+                if (locationManager == null) {
+                    promise.reject("NOT_INITIALIZED", "Indoor Atlas SDK not initialized.");
+                    return;
                 }
-            );
+                
+                // Request immediate location update
+                locationManager.requestLocationUpdates(
+                    IALocationRequest.create(),
+                    new IALocationListener() {
+                        @Override
+                        public void onLocationChanged(IALocation location) {
+                            WritableMap locationData = createLocationMap(location);
+                            promise.resolve(locationData);
+                            locationManager.removeLocationUpdates(this);
+                        }
+                        
+                        @Override
+                        public void onStatusChanged(String provider, int status, Bundle extras) {
+                            // Handle status changes if needed
+                            Log.d(TAG, "Location status changed: " + provider + " status=" + status);
+                        }
+                    }
+                );
             
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to get current location: " + e.getMessage());
-            promise.reject("LOCATION_ERROR", "Failed to get location: " + e.getMessage(), e);
-        }
+            } catch (Exception e) {
+                    Log.e(TAG, "Failed to get current location: " + e.getMessage());
+                    promise.reject("LOCATION_ERROR", "Failed to get location: " + e.getMessage(), e);
+            }
+        });
     }
     
     /**

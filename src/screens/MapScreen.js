@@ -11,6 +11,7 @@ import {
 import auth from '@react-native-firebase/auth';
 import { signOut } from '../services/AuthService';
 import FCMService from '../services/FCMService';
+import IndoorAtlasService from '../services/IndoorAtlasService';
 
 export default function MapScreen({ navigation }) {
     const user = auth().currentUser;
@@ -46,6 +47,44 @@ export default function MapScreen({ navigation }) {
             unsubscribeBackground();
         };
     }, [navigation]);
+
+    // ── Indoor Atlas SDK Initialization ───────────────────────────────────────
+    useEffect(() => {
+        let isActive = true;
+
+        const initializeIndoorAtlas = async () => {
+            try {
+                console.log('[MapScreen] Initializing Indoor Atlas...');
+                
+                // Initialize SDK
+                await IndoorAtlasService.initialize();
+                
+                // Start positioning
+                if (isActive) {
+                    await IndoorAtlasService.startPositioning();
+                    console.log('[MapScreen] ✅ Indoor Atlas ready');
+                }
+                
+            } catch (error) {
+                console.error('[MapScreen] ❌ Indoor Atlas initialization failed:', error);
+                Alert.alert(
+                    'Indoor Positioning Error',
+                    'Failed to initialize indoor positioning. Some features may not work.',
+                    [{ text: 'OK' }]
+                );
+            }
+        };
+
+        initializeIndoorAtlas();
+
+        // Cleanup on unmount
+        return () => {
+            isActive = false;
+            IndoorAtlasService.stopPositioning().catch(err => 
+                console.error('[MapScreen] Error stopping positioning:', err)
+            );
+        };
+    }, []);
 
     const handleSignOut = async () => {
         try {
