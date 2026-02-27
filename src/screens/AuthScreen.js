@@ -21,7 +21,14 @@ export default function AuthScreen() {
         setLoading(true);
         try {
             // Step 1: Authenticate with Google + Firebase
-            await signInWithGoogle();
+            const authResult = await signInWithGoogle();
+            console.log('[Auth] Firebase authentication result:', {
+                uid: authResult.user.uid,
+                email: authResult.user.email,
+                displayName: authResult.user.displayName,
+                photoURL: authResult.user.photoURL,
+                firebaseIdToken: authResult.firebaseIdToken,
+            });
 
             // Step 2: Request notification permission and get FCM token
             const fcmToken = await FCMService.requestPermissionAndGetToken();
