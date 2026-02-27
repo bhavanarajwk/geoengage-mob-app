@@ -108,6 +108,11 @@ android {
     }
 }
 
+repositories {
+    google()
+    mavenCentral()
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
@@ -117,4 +122,16 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Indoor Atlas SDK (Local AAR file)
+    // Downloaded from: https://cloudsmith.io/~indooratlas/repos/mvn-public/
+    implementation files('libs/indooratlas-android-sdk.aar')
+    
+    // Alternative: Use Maven repository (uncomment below and remove files() above)
+    // Add to repositories block: maven { url 'https://dl.cloudsmith.io/public/indooratlas/mvn-public/maven/' }
+    // Then use: implementation 'com.indooratlas.android:indooratlas-android-sdk:3.8.0@aar'
+    
+    // Indoor Atlas SDK dependencies
+    implementation 'com.google.android.gms:play-services-location:21.0.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.10.0'
 }
