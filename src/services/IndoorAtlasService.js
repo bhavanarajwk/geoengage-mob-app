@@ -200,6 +200,21 @@ class IndoorAtlasService {
   }
 
   /**
+   * Subscribe to floor plan changes
+   * @param {Function} callback - Called when floor plan loads
+   * @returns {Object} Subscription object with remove() method
+   */
+  onFloorPlanChanged(callback) {
+    const subscription = IndoorAtlas.onFloorPlanChanged((floorPlan) => {
+      console.log('[IndoorAtlas] 🗺️ Floor plan:', floorPlan.name, floorPlan.url);
+      callback(floorPlan);
+    });
+
+    this.subscriptions.push(subscription);
+    return subscription;
+  }
+
+  /**
    * Remove all event subscriptions and cleanup
    */
   cleanup() {

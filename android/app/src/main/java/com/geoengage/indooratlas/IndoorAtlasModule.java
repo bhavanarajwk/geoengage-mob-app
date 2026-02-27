@@ -1,9 +1,14 @@
 package com.geoengage.indooratlas;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.annotation.Nullable;
 
 import com.facebook.react.bridge.Arguments;
@@ -20,6 +25,9 @@ import com.indooratlas.android.sdk.IALocationListener;
 import com.indooratlas.android.sdk.IALocationManager;
 import com.indooratlas.android.sdk.IALocationRequest;
 import com.indooratlas.android.sdk.IARegion;
+import com.indooratlas.android.sdk.resources.IAFloorPlan;
+import com.indooratlas.android.sdk.resources.IALatLng;
+import android.graphics.PointF;
 
 public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     
@@ -28,6 +36,7 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     
     private final ReactApplicationContext reactContext;
     private IALocationManager locationManager;
+    private String currentFloorPlanId;
     private boolean isPositioning = false;
     
     // Event names
@@ -95,15 +104,28 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                     return;
                 }
                 
+                // Check if we have location permissions
+                if (!hasLocationPermissions()) {
+                    Log.e(TAG, "[DEBUG] ❌ MISSING LOCATION PERMISSIONS!");
+                    Log.e(TAG, "[DEBUG] Please grant location permissions in Android settings");
+                    promise.reject("PERMISSION_DENIED", "Location permissions not granted. Please enable location permissions in Android settings.");
+                    return;
+                }
+                
+                Log.d(TAG, "[DEBUG] ✅ Location permissions granted");
+                
                 // Request location updates with high accuracy
                 IALocationRequest request = IALocationRequest.create();
                 request.setFastestInterval(1000); // 1 second
                 request.setSmallestDisplacement(0.5f); // 0.5 meters
                 
+                Log.d(TAG, "[DEBUG] Requesting location updates...");
                 boolean success = locationManager.requestLocationUpdates(request, locationListener);
                 
                 if (!success) {
-                    Log.w(TAG, "Failed to request location updates");
+                    Log.w(TAG, "[DEBUG] requestLocationUpdates returned false!");
+                } else {
+                    Log.d(TAG, "[DEBUG] requestLocationUpdates returned true - listening for updates");
                 }
                 
                 isPositioning = true;
@@ -116,6 +138,28 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                 promise.reject("START_ERROR", "Failed to start positioning: " + e.getMessage(), e);
             }
         });
+    }
+    
+    /**
+     * Check if location permissions are granted
+     */
+    private boolean hasLocationPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            boolean fineLocation = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED;
+            
+            boolean coarseLocation = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED;
+            
+            Log.d(TAG, "[DEBUG] Permission check - FINE_LOCATION: " + fineLocation + ", COARSE_LOCATION: " + coarseLocation);
+            
+            return fineLocation || coarseLocation;
+        }
+        return true; // Pre-Marshmallow doesn't need runtime permissions
     }
     
     /**
@@ -193,12 +237,56 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     }
     
     /**
+     * Process floor plan from location region
+     */
+    private void processFloorPlan(IALocation location) {
+        if (location.getRegion() != null && location.getRegion().getType() == IARegion.TYPE_FLOOR_PLAN) {
+            IAFloorPlan floorPlan = location.getRegion().getFloorPlan();
+            
+            if (floorPlan != null && (currentFloorPlanId == null || !floorPlan.getId().equals(currentFloorPlanId))) {
+                currentFloorPlanId = floorPlan.getId();
+                Log.d(TAG, "[DEBUG] ✅ Floor plan detected: " + floorPlan.getName());
+                Log.d(TAG, "[DEBUG] Floor plan URL: " + floorPlan.getUrl());
+                Log.d(TAG, "[DEBUG] Floor plan size: " + floorPlan.getBitmapWidth() + "x" + floorPlan.getBitmapHeight());
+                
+                // Send floor plan info to React Native
+                WritableMap floorPlanData = Arguments.createMap();
+                floorPlanData.putString("id", floorPlan.getId());
+                floorPlanData.putString("name", floorPlan.getName());
+                floorPlanData.putString("url", floorPlan.getUrl());
+                floorPlanData.putInt("width", floorPlan.getBitmapWidth());
+                floorPlanData.putInt("height", floorPlan.getBitmapHeight());
+                floorPlanData.putInt("floorLevel", floorPlan.getFloorLevel());
+                
+                sendEvent("onFloorPlanChanged", floorPlanData);
+            }
+        }
+    }
+    
+    /**
      * Location listener - receives position updates
      */
     private final IALocationListener locationListener = new IALocationListener() {
         @Override
         public void onLocationChanged(IALocation location) {
+            Log.d(TAG, "[DEBUG] onLocationChanged called! Lat: " + location.getLatitude() + ", Lng: " + location.getLongitude());
+            
+            // Process floor plan if available
+            processFloorPlan(location);
+            
             WritableMap locationData = createLocationMap(location);
+            
+            // Add pixel coordinates if floor plan is available
+            if (location.getRegion() != null && location.getRegion().getType() == IARegion.TYPE_FLOOR_PLAN) {
+                IAFloorPlan floorPlan = location.getRegion().getFloorPlan();
+                if (floorPlan != null) {
+                    PointF pixelCoords = floorPlan.coordinateToPoint(new IALatLng(location.getLatitude(), location.getLongitude()));
+                    locationData.putDouble("pixelX", pixelCoords.x);
+                    locationData.putDouble("pixelY", pixelCoords.y);
+                    Log.d(TAG, "[DEBUG] Pixel coordinates: " + pixelCoords.x + ", " + pixelCoords.y);
+                }
+            }
+            
             sendEvent(EVENT_LOCATION_CHANGED, locationData);
         }
         
@@ -211,7 +299,7 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
             statusData.putString("statusText", getStatusText(status));
             sendEvent(EVENT_STATUS_CHANGED, statusData);
             
-            Log.d(TAG, "Status changed: " + provider + " = " + getStatusText(status));
+            Log.d(TAG, "[DEBUG] Status changed: " + provider + " = " + getStatusText(status) + " (code: " + status + ")");
         }
     };
     

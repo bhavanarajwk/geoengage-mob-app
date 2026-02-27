@@ -114,6 +114,15 @@ class IndoorAtlasService {
   }
 
   /**
+   * Subscribe to floor plan changes
+   * @param {function} callback - Function called when floor plan loads
+   * @returns {Object} Subscription object with remove() method
+   */
+  static onFloorPlanChanged(callback) {
+    return eventEmitter.addListener('onFloorPlanChanged', callback);
+  }
+
+  /**
    * Remove all event listeners (call in cleanup)
    */
   static removeAllListeners() {
@@ -121,6 +130,7 @@ class IndoorAtlasService {
     eventEmitter.removeAllListeners('onGeofenceEnter');
     eventEmitter.removeAllListeners('onGeofenceExit');
     eventEmitter.removeAllListeners('onStatusChanged');
+    eventEmitter.removeAllListeners('onFloorPlanChanged');
   }
 }
 
