@@ -22,13 +22,20 @@ export default function AuthScreen() {
         try {
             // Step 1: Authenticate with Google + Firebase
             const authResult = await signInWithGoogle();
-            console.log('[Auth] Firebase authentication result:', {
-                uid: authResult.user.uid,
-                email: authResult.user.email,
-                displayName: authResult.user.displayName,
-                photoURL: authResult.user.photoURL,
-                firebaseIdToken: authResult.firebaseIdToken,
-            });
+            
+            // Log everything Firebase returns
+            console.log('========== FIREBASE AUTH COMPLETE DATA ==========');
+            console.log('[Auth] Full Firebase User Object:', JSON.stringify(authResult.user, null, 2));
+            console.log('[Auth] Firebase ID Token (JWT):', authResult.firebaseIdToken);
+            console.log('[Auth] User UID:', authResult.user.uid);
+            console.log('[Auth] Email:', authResult.user.email);
+            console.log('[Auth] Display Name:', authResult.user.displayName);
+            console.log('[Auth] Photo URL:', authResult.user.photoURL);
+            console.log('[Auth] Email Verified:', authResult.user.emailVerified);
+            console.log('[Auth] Phone Number:', authResult.user.phoneNumber);
+            console.log('[Auth] Provider Data:', JSON.stringify(authResult.user.providerData, null, 2));
+            console.log('[Auth] Metadata:', JSON.stringify(authResult.user.metadata, null, 2));
+            console.log('================================================');
 
             // Step 2: Request notification permission and get FCM token
             const fcmToken = await FCMService.requestPermissionAndGetToken();
