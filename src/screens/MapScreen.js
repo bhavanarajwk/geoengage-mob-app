@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -7,14 +7,26 @@ import {
     Alert,
     SafeAreaView,
     StatusBar,
+    ImageBackground,
+    Dimensions,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { signOut } from '../services/AuthService';
 import FCMService from '../services/FCMService';
 import IndoorAtlasService from '../services/IndoorAtlasService';
+import BlueDot from '../components/BlueDot';
+
+const floorPlanImage = require('../../assets/floorplan.png');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function MapScreen({ navigation }) {
     const user = auth().currentUser;
+    
+    // Position state for blue dot
+    const [position, setPosition] = useState({
+        x: SCREEN_WIDTH / 2,  // Mock position - center of screen
+        y: 300,  // Mock position - will be updated by real data
+    });
 
     useEffect(() => {
         // ── Foreground notifications ──────────────────────────────────────────────
@@ -114,15 +126,15 @@ export default function MapScreen({ navigation }) {
                 </TouchableOpacity>
             </View>
 
-            {/* Map Placeholder */}
-            <View style={styles.mapPlaceholder}>
-                <View style={styles.mapPlaceholderInner}>
-                    <Text style={styles.mapIcon}>🗺️</Text>
-                    <Text style={styles.mapPlaceholderTitle}>Indoor Map</Text>
-                    <Text style={styles.mapPlaceholderText}>
-                        IndoorAtlas SDK integration{'\n'}coming in the next phase.
-                    </Text>
-                </View>
+            {/* Floor Plan with Blue Dot */}
+            <View style={styles.mapContainer}>
+                <ImageBackground
+                    source={floorPlanImage}
+                    style={styles.floorPlan}
+                    resizeMode="contain"
+                >
+                    <BlueDot x={position.x} y={position.y} size={24} />
+                </ImageBackground>
             </View>
 
             {/* Status Bar */}
@@ -180,36 +192,20 @@ const styles = StyleSheet.create({
     notificationIcon: {
         fontSize: 20,
     },
-    mapPlaceholder: {
+    mapContainer: {
         flex: 1,
         borderRadius: 16,
         backgroundColor: '#0f3460',
         overflow: 'hidden',
-        alignItems: 'center',
-        justifyContent: 'center',
         borderWidth: 1,
         borderColor: '#1e3a5f',
         marginBottom: 20,
     },
-    mapPlaceholderInner: {
+    floorPlan: {
+        flex: 1,
+        width: '100%',
+        justifyContent: 'center',
         alignItems: 'center',
-        padding: 32,
-    },
-    mapIcon: {
-        fontSize: 56,
-        marginBottom: 16,
-    },
-    mapPlaceholderTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#ffffff',
-        marginBottom: 8,
-    },
-    mapPlaceholderText: {
-        fontSize: 14,
-        color: '#a8a8b3',
-        textAlign: 'center',
-        lineHeight: 20,
     },
     statusBar: {
         flexDirection: 'row',
