@@ -31,10 +31,6 @@ export default function MapScreen({ navigation }) {
         y: 300,  // Mock position - will be updated by real data
     });
     
-    // Debug state to show location data on screen
-    const [locationDebug, setLocationDebug] = useState(null);
-    const [sdkStatus, setSdkStatus] = useState('Initializing...');
-    const [updateCount, setUpdateCount] = useState(0);
     const [floorPlan, setFloorPlan] = useState(null); // Indoor Atlas floor plan
     const [imageLayout, setImageLayout] = useState(null); // Actual rendered image dimensions
     
@@ -141,6 +137,7 @@ export default function MapScreen({ navigation }) {
         let isActive = true;
         let locationUnsubscribe = null;
         let statusUnsubscribe = null;
+        let floorPlanUnsubscribe = null;
 
         const requestLocationPermissions = async () => {
             if (Platform.OS !== 'android') {
@@ -183,36 +180,26 @@ export default function MapScreen({ navigation }) {
                 
                 // Request location permissions first
                 console.log('[MapScreen] Checking permissions...');
-                setSdkStatus('Checking permissions...');
-                setUpdateCount(c => c + 1);
                 
                 const hasPermissions = await requestLocationPermissions();
                 if (!hasPermissions) {
-                    setSdkStatus('❌ Location permissions denied');
-                    setUpdateCount(c => c + 1);
                     return;
                 }
                 
                 console.log('[MapScreen] Setting status: Initializing SDK...');
-                setSdkStatus('Initializing SDK...');
-                setUpdateCount(c => c + 1);
                 
                 // Initialize SDK
                 console.log('[MapScreen] Calling IndoorAtlasService.initialize()...');
                 await IndoorAtlasService.initialize();
                 console.log('[MapScreen] Initialize complete! Setting status...');
-                setSdkStatus('SDK Initialized ✓');
-                setUpdateCount(c => c + 1);
                 console.log('[MapScreen] Status set to: SDK Initialized ✓');
                 
                 // Subscribe to floor plan changes
                 console.log('[MapScreen] Subscribing to floor plan changes...');
-                const floorPlanUnsubscribe = IndoorAtlasService.onFloorPlanChanged((floorPlanData) => {
+                floorPlanUnsubscribe = IndoorAtlasService.onFloorPlanChanged((floorPlanData) => {
                     if (!isActive) return;
                     console.log('[MapScreen] 🗺️ Floor plan changed:', floorPlanData);
                     setFloorPlan(floorPlanData);
-                    setSdkStatus(`Floor plan loaded: ${floorPlanData.name}`);
-                    setUpdateCount(c => c + 1);
                 });
                 
                 // Subscribe to status changes
@@ -222,8 +209,6 @@ export default function MapScreen({ navigation }) {
                     console.log('[MapScreen] 📊 Status changed EVENT RECEIVED:', statusData);
                     const newStatus = `${statusData.provider}: ${statusData.statusText}`;
                     console.log('[MapScreen] Setting status to:', newStatus);
-                    setSdkStatus(newStatus);
-                    setUpdateCount(c => c + 1);
                 });
                 console.log('[MapScreen] Status subscription registered');
                 
@@ -233,17 +218,6 @@ export default function MapScreen({ navigation }) {
                     if (!isActive) return;
                     
                     console.log('[MapScreen] 📍 Location update:', location);
-                    
-                    // Store debug info
-                    setLocationDebug({
-                        lat: location.latitude?.toFixed(6) || 'N/A',
-                        lng: location.longitude?.toFixed(6) || 'N/A',
-                        accuracy: location.accuracy?.toFixed(2) || 'N/A',
-                        floor: location.floorLevel || 'N/A',
-                        timestamp: new Date().toLocaleTimeString(),
-                        pixelX: location.pixelX?.toFixed(0) || 'N/A',
-                        pixelY: location.pixelY?.toFixed(0) || 'N/A',
-                    });
                     
                     // Use pixel coordinates from Indoor Atlas if available
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
@@ -260,22 +234,16 @@ export default function MapScreen({ navigation }) {
                 // Start positioning
                 if (isActive) {
                     console.log('[MapScreen] Setting status: Starting positioning...');
-                    setSdkStatus('Starting positioning...');
-                    setUpdateCount(c => c + 1);
                     console.log('[MapScreen] Calling startPositioning()...');
                     await IndoorAtlasService.startPositioning();
                     console.log('[MapScreen] ✅ Indoor Atlas ready');
                     console.log('[MapScreen] Setting status: Waiting for location...');
-                    setSdkStatus('Waiting for location... (may take 10-30s)');
-                    setUpdateCount(c => c + 1);
                     console.log('[MapScreen] Status set complete');
                     
                     // Check if we're getting updates after 15 seconds
                     setTimeout(() => {
-                        if (!locationDebug && isActive) {
+                        if (isActive) {
                             console.log('[MapScreen] ⚠️ Timeout: No location after 15s');
-                            setSdkStatus('⚠️ No location updates received');
-                            setUpdateCount(c => c + 1);
                             console.warn('[MapScreen] No location updates after 15 seconds');
                         }
                     }, 15000);
@@ -285,8 +253,6 @@ export default function MapScreen({ navigation }) {
                 
             } catch (error) {
                 console.error('[MapScreen] ❌ Indoor Atlas initialization failed:', error);
-                setSdkStatus('❌ Initialization failed: ' + error.message);
-                setUpdateCount(c => c + 1);
                 Alert.alert(
                     'Indoor Positioning Error',
                     'Failed to initialize indoor positioning. Some features may not work.',
@@ -300,11 +266,14 @@ export default function MapScreen({ navigation }) {
         // Cleanup on unmount
         return () => {
             isActive = false;
-            if (locationUnsubscribe) {
-                locationUnsubscribe();
+            if (locationUnsubscribe && typeof locationUnsubscribe.remove === 'function') {
+                locationUnsubscribe.remove();
             }
-            if (statusUnsubscribe) {
-                statusUnsubscribe();
+            if (statusUnsubscribe && typeof statusUnsubscribe.remove === 'function') {
+                statusUnsubscribe.remove();
+            }
+            if (floorPlanUnsubscribe && typeof floorPlanUnsubscribe.remove === 'function') {
+                floorPlanUnsubscribe.remove();
             }
             IndoorAtlasService.stopPositioning().catch(err => 
                 console.error('[MapScreen] Error stopping positioning:', err)
@@ -354,62 +323,6 @@ export default function MapScreen({ navigation }) {
                 >
                     <BlueDot x={position.x} y={position.y} size={24} />
                 </ImageBackground>
-                
-                {/* Debug Overlay - Shows location data on screen */}
-                <View style={styles.debugOverlay}>
-                    <Text style={styles.debugTitle}>📍 Indoor Atlas [{updateCount}]</Text>
-                    <Text style={styles.debugText}>Status: {sdkStatus}</Text>
-                    {floorPlan && (
-                        <>
-                            <Text style={[styles.debugText, {color: '#00ff88'}]}>
-                                Floor Plan: {floorPlan.name}
-                            </Text>
-                            <Text style={[styles.debugText, {color: '#00ff88', fontSize: 10}]}>
-                                Bitmap: {floorPlan.width}x{floorPlan.height}px
-                            </Text>
-                            {imageLayout && (() => {
-                                const containerAspect = imageLayout.width / imageLayout.height;
-                                const imageAspect = floorPlan.width / floorPlan.height;
-                                const isWidthConstrained = imageAspect > containerAspect;
-                                const renderedWidth = isWidthConstrained ? imageLayout.width : imageLayout.height * imageAspect;
-                                const renderedHeight = isWidthConstrained ? imageLayout.width / imageAspect : imageLayout.height;
-                                const scale = renderedWidth / floorPlan.width;
-                                return (
-                                    <Text style={[styles.debugText, {color: '#00ff88', fontSize: 10}]}>
-                                        Rendered: {renderedWidth.toFixed(0)}x{renderedHeight.toFixed(0)}px (scale: {scale.toFixed(2)}x)
-                                    </Text>
-                                );
-                            })()}
-                        </>
-                    )}
-                    <TouchableOpacity 
-                        onPress={() => {
-                            setUpdateCount(c => c + 1);
-                            console.log('[MapScreen] Test button pressed, count:', updateCount + 1);
-                        }}
-                        style={{backgroundColor: '#ff6600', padding: 5, borderRadius: 3, marginVertical: 5}}
-                    >
-                        <Text style={{color: '#fff', fontSize: 10}}>TAP TO TEST UPDATE</Text>
-                    </TouchableOpacity>
-                    {locationDebug ? (
-                        <>
-                            <Text style={[styles.debugText, {marginTop: 8, color: '#00ff88'}]}>Location Data:</Text>
-                            <Text style={styles.debugText}>Lat: {locationDebug.lat}</Text>
-                            <Text style={styles.debugText}>Lng: {locationDebug.lng}</Text>
-                            <Text style={styles.debugText}>Accuracy: {locationDebug.accuracy}m</Text>
-                            <Text style={styles.debugText}>Floor: {locationDebug.floor}</Text>
-                            <Text style={styles.debugText}>Time: {locationDebug.timestamp}</Text>
-                            {locationDebug.pixelX !== 'N/A' && (
-                                <Text style={[styles.debugText, {color: '#ffff00'}]}>
-                                    Pixel: ({locationDebug.pixelX}, {locationDebug.pixelY})
-                                </Text>
-                            )}
-                            <Text style={styles.debugTextSmall}>Screen: ({position.x.toFixed(0)}, {position.y.toFixed(0)})</Text>
-                        </>
-                    ) : (
-                        <Text style={[styles.debugText, {color: '#ffaa00', marginTop: 5}]}>No location data yet</Text>
-                    )}
-                </View>
             </View>
 
             {/* Status Bar */}
