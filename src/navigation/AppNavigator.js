@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import auth from '@react-native-firebase/auth';
+import { configureGoogleSignIn } from '../services/AuthService';
 
 import AuthScreen from '../screens/AuthScreen';
 import MapScreen from '../screens/MapScreen';
@@ -14,6 +15,9 @@ export default function AppNavigator() {
     const [initializing, setInitializing] = useState(true);
 
     useEffect(() => {
+        // Configure Google Sign-In FIRST — must happen before any signIn() call
+        configureGoogleSignIn();
+
         // Listen to Firebase Auth state changes
         const unsubscribe = auth().onAuthStateChanged(firebaseUser => {
             setUser(firebaseUser);
