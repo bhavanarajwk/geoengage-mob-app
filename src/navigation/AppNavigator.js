@@ -7,6 +7,7 @@ import { configureGoogleSignIn } from '../services/AuthService';
 import AuthScreen from '../screens/AuthScreen';
 import MapScreen from '../screens/MapScreen';
 import NotificationHistoryScreen from '../screens/NotificationHistoryScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -44,6 +45,13 @@ export default function AppNavigator() {
                         <Stack.Screen
                             name="NotificationHistory"
                             component={NotificationHistoryScreen}
+                            options={{
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen
+                            name="Profile"
+                            component={ProfileScreen}
                             options={{
                                 animation: 'slide_from_right',
                             }}

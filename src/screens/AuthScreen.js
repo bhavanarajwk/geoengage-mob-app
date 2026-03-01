@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -7,28 +7,64 @@ import {
     Alert,
     ActivityIndicator,
     Image,
-    SafeAreaView,
     StatusBar,
+    Animated,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { signInWithGoogle } from '../services/AuthService';
 import FCMService from '../services/FCMService';
 import APIService from '../services/APIService';
 
 export default function AuthScreen() {
     const [loading, setLoading] = useState(false);
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(0.8)).current;
+    const slideUpAnim = useRef(new Animated.Value(50)).current;
+
+    // Animate on mount
+    useEffect(() => {
+        Animated.sequence([
+            Animated.parallel([
+                Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 600,
+                    useNativeDriver: true,
+                }),
+                Animated.spring(scaleAnim, {
+                    toValue: 1,
+                    tension: 50,
+                    friction: 7,
+                    useNativeDriver: true,
+                }),
+            ]),
+            Animated.timing(slideUpAnim, {
+                toValue: 0,
+                duration: 400,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    }, []);
 
     const handleGoogleSignIn = async () => {
         setLoading(true);
         try {
             // Step 1: Authenticate with Google + Firebase
             const authResult = await signInWithGoogle();
-            console.log('[Auth] Firebase authentication result:', {
-                uid: authResult.user.uid,
-                email: authResult.user.email,
-                displayName: authResult.user.displayName,
-                photoURL: authResult.user.photoURL,
-                firebaseIdToken: authResult.firebaseIdToken,
-            });
+            
+            // Log everything Firebase returns
+            console.log('========== FIREBASE AUTH COMPLETE DATA ==========');
+            console.log('[Auth] Full Firebase User Object:', JSON.stringify(authResult.user, null, 2));
+            console.log('[Auth] Firebase ID Token (JWT):', authResult.firebaseIdToken);
+            console.log('[Auth] User UID:', authResult.user.uid);
+            console.log('[Auth] Email:', authResult.user.email);
+            console.log('[Auth] Display Name:', authResult.user.displayName);
+            console.log('[Auth] Photo URL:', authResult.user.photoURL);
+            console.log('[Auth] Email Verified:', authResult.user.emailVerified);
+            console.log('[Auth] Phone Number:', authResult.user.phoneNumber);
+            console.log('[Auth] Provider Data:', JSON.stringify(authResult.user.providerData, null, 2));
+            console.log('[Auth] Metadata:', JSON.stringify(authResult.user.metadata, null, 2));
+            console.log('================================================');
 
             // Step 2: Request notification permission and get FCM token
             const fcmToken = await FCMService.requestPermissionAndGetToken();
@@ -61,34 +97,55 @@ export default function AuthScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
             <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
 
             {/* Header / Branding */}
-            <View style={styles.brandingContainer}>
+            <Animated.View 
+                style={[
+                    styles.brandingContainer,
+                    {
+                        opacity: fadeAnim,
+                        transform: [{ scale: scaleAnim }],
+                    },
+                ]}
+            >
                 <View style={styles.logoCircle}>
-                    <Text style={styles.logoText}>GE</Text>
+                    <Icon name="map-marker-radius" size={48} color="#e94560" />
                 </View>
                 <Text style={styles.appName}>GeoEngage</Text>
                 <Text style={styles.tagline}>
                     Smart indoor experiences,{'\n'}delivered to your device.
                 </Text>
-            </View>
+            </Animated.View>
 
             {/* Sign-In Section */}
-            <View style={styles.signInContainer}>
+            <Animated.View 
+                style={[
+                    styles.signInContainer,
+                    {
+                        opacity: fadeAnim,
+                        transform: [{ translateY: slideUpAnim }],
+                    },
+                ]}
+            >
                 <TouchableOpacity
                     style={[styles.googleButton, loading && styles.googleButtonDisabled]}
                     onPress={handleGoogleSignIn}
                     disabled={loading}
                     activeOpacity={0.85}>
                     {loading ? (
-                        <ActivityIndicator size="small" color="#4285F4" />
+                        <>
+                            <ActivityIndicator size="small" color="#4285F4" />
+                            <Text style={[styles.googleButtonText, { marginLeft: 12 }]}>
+                                Signing in...
+                            </Text>
+                        </>
                     ) : (
                         <>
-                            {/* Google "G" logo placeholder */}
+                            {/* Google "G" logo with icon */}
                             <View style={styles.googleIconContainer}>
-                                <Text style={styles.googleIcon}>G</Text>
+                                <Icon name="google" size={20} color="#4285F4" />
                             </View>
                             <Text style={styles.googleButtonText}>Continue with Google</Text>
                         </>
@@ -100,7 +157,7 @@ export default function AuthScreen() {
                     <Text style={styles.linkText}>Terms</Text> and{' '}
                     <Text style={styles.linkText}>Privacy Policy</Text>
                 </Text>
-            </View>
+            </Animated.View>
         </SafeAreaView>
     );
 }
@@ -119,26 +176,20 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     logoCircle: {
-        width: 90,
-        height: 90,
-        borderRadius: 45,
+        width: 100,
+        height: 100,
+        borderRadius: 50,
         backgroundColor: '#0f3460',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 20,
-        borderWidth: 2,
+        borderWidth: 3,
         borderColor: '#e94560',
         elevation: 8,
         shadowColor: '#e94560',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
-    },
-    logoText: {
-        fontSize: 32,
-        fontWeight: '800',
-        color: '#e94560',
-        letterSpacing: 1,
     },
     appName: {
         fontSize: 34,
@@ -176,18 +227,13 @@ const styles = StyleSheet.create({
         opacity: 0.7,
     },
     googleIconContainer: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: '#4285F4',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#f8f9fa',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 12,
-    },
-    googleIcon: {
-        color: '#ffffff',
-        fontSize: 14,
-        fontWeight: '800',
     },
     googleButtonText: {
         fontSize: 16,
