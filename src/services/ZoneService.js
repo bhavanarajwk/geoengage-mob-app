@@ -8,6 +8,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import APIService from './APIService';
 
 const STORAGE_KEY = '@zone_history';
 const COOLDOWN_SECONDS = 60; // Don't notify about same zone within 60 seconds
@@ -59,8 +60,7 @@ class ZoneService {
   }
 
   /**
-   * Save zone entry to persistent storage
-   * 🔄 BACKEND-READY: Replace this with API call when backend is ready
+   * Save zone entry to persistent storage AND send to backend
    * 
    * @param {Object} entry - Zone entry data
    * @param {string} entry.zoneId - Zone identifier
@@ -73,25 +73,48 @@ class ZoneService {
     try {
       console.log('[ZoneService] Saving zone entry:', entry);
 
-      // Get existing history
-      const history = await this.getZoneHistory();
+      // Save to backend first (triggers campaigns)
+      try {
+        // Note: floorLevel comes from Indoor Atlas location updates (location.floorLevel)
+        // It's an integer representing the floor number (e.g., 1, 2, 3)
+        // If null, we default to 1
+        const floorId = entry.floorLevel !== null && entry.floorLevel !== undefined 
+          ? entry.floorLevel 
+          : 1;
+        
+        const payload = {
+          zone_id: entry.zoneId,           // Indoor Atlas zone UUID (string)
+          zone_name: entry.zoneName,        // Human-readable zone name (string)
+          floor_id: floorId,                // Floor number (integer)
+        };
+        
+        console.log('[ZoneService] 📡 Sending to backend:');
+        console.log('  - zone_id:', payload.zone_id);
+        console.log('  - zone_name:', payload.zone_name);
+        console.log('  - floor_id:', payload.floor_id, '(type:', typeof payload.floor_id + ')');
+        console.log('[ZoneService] 🌐 Endpoint: POST /api/v1/event');
+        const response = await APIService.post('/api/v1/event', payload);
+        console.log('[ZoneService] ✅ Backend response:', response.data);
+      } catch (apiErr) {
+        console.error('[ZoneService] ❌ Backend error:', apiErr.response?.status, apiErr.response?.data);
+        if (apiErr.response?.status === 401) {
+          console.error('[ZoneService] 🚫 401 Unauthorized - Check if JWT is being sent correctly');
+          console.error('[ZoneService] 📋 Error details:', JSON.stringify(apiErr.response?.data, null, 2));
+        }
+        // Continue to save locally even if backend fails
+      }
 
-      // Add new entry at the beginning
+      // Also save to local AsyncStorage as backup (use local method to avoid backend call)
+      const data = await AsyncStorage.getItem(STORAGE_KEY);
+      const history = data ? JSON.parse(data) : [];
       history.unshift({
         ...entry,
         timestamp: entry.timestamp || Date.now(),
       });
-
-      // Keep last 100 entries only
       const trimmedHistory = history.slice(0, 100);
-
-      // Save back to storage
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedHistory));
       
-      console.log('[ZoneService] ✅ Zone entry saved successfully');
-      
-      // 🔄 FUTURE: Replace above with API call
-      // await APIService.saveZoneEntry(entry);
+      console.log('[ZoneService] ✅ Zone entry saved locally');
 
     } catch (error) {
       console.error('[ZoneService] ❌ Failed to save zone entry:', error);
@@ -100,30 +123,39 @@ class ZoneService {
   }
 
   /**
-   * Get zone entry history from storage
-   * 🔄 BACKEND-READY: Replace this with API call when backend is ready
+   * Get zone entry history from backend
+   * Falls back to local AsyncStorage if backend fails
    * 
+   * @param {number} limit - Max number of entries (default: 50)
+   * @param {number} offset - Offset for pagination (default: 0)
    * @returns {Promise<Array>} Array of zone entries, newest first
    */
-  async getZoneHistory() {
+  async getZoneHistory(limit = 50, offset = 0) {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
+      console.log(`[ZoneService] 📡 Fetching history from backend (limit=${limit}, offset=${offset})`);
       
-      if (!data) {
+      const response = await APIService.get('/api/v1/notifications', {
+        params: { limit, offset },
+      });
+      
+      console.log(`[ZoneService] ✅ Retrieved ${response.data?.length || 0} entries from backend`);
+      return response.data || [];
+      
+    } catch (apiErr) {
+      console.warn('[ZoneService] ⚠️ Backend fetch failed, using local storage:', apiErr.message);
+      
+      // Fallback to AsyncStorage
+      try {
+        const data = await AsyncStorage.getItem(STORAGE_KEY);
+        if (!data) return [];
+        
+        const history = JSON.parse(data);
+        console.log(`[ZoneService] Retrieved ${history.length} entries from local storage`);
+        return history;
+      } catch (storageErr) {
+        console.error('[ZoneService] ❌ Failed to get zone history from storage:', storageErr);
         return [];
       }
-
-      const history = JSON.parse(data);
-      console.log(`[ZoneService] Retrieved ${history.length} zone entries from history`);
-      
-      return history;
-
-      // 🔄 FUTURE: Replace above with API call
-      // return await APIService.getZoneHistory();
-
-    } catch (error) {
-      console.error('[ZoneService] ❌ Failed to get zone history:', error);
-      return [];
     }
   }
 

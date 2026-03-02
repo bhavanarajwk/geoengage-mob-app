@@ -44,18 +44,25 @@ export default function MapScreen({ navigation }) {
     const [showLocationWarning, setShowLocationWarning] = useState(false); // Show warning after timeout
     const [loadingDismissed, setLoadingDismissed] = useState(false); // User dismissed loading overlay
     const [currentZone, setCurrentZone] = useState(null); // Current zone user is in (null if not in any zone)
+    const [currentFloorLevel, setCurrentFloorLevel] = useState(null); // Current floor level from Indoor Atlas
     
     // Use refs to store current values for use in callbacks
     const floorPlanRef = useRef(null);
     const imageLayoutRef = useRef(null);
     const hasLocationFixRef = useRef(false);
     const currentZoneRef = useRef(null);
+    const currentFloorLevelRef = useRef(null);
     
     // Update refs when states change
     useEffect(() => {
         floorPlanRef.current = floorPlan;
         console.log('[MapScreen] floorPlanRef updated:', !!floorPlan);
     }, [floorPlan]);
+    
+    useEffect(() => {
+        currentFloorLevelRef.current = currentFloorLevel;
+        console.log('[MapScreen] Current floor level:', currentFloorLevel);
+    }, [currentFloorLevel]);
     
     useEffect(() => {
         imageLayoutRef.current = imageLayout;
@@ -246,7 +253,7 @@ export default function MapScreen({ navigation }) {
                             zoneId: region.id,
                             zoneName: region.name || 'Unknown Zone',
                             timestamp: Date.now(),
-                            floorLevel: floorPlanRef.current?.floorLevel || null,
+                            floorLevel: currentFloorLevelRef.current,
                         }).catch(err => {
                             console.error('[MapScreen] Failed to save zone entry:', err);
                         });
@@ -286,6 +293,11 @@ export default function MapScreen({ navigation }) {
                     if (!isActive) return;
                     
                     setHasLocationFix(true); // We have a location fix
+                    
+                    // Update current floor level from Indoor Atlas
+                    if (location.floorLevel !== undefined && location.floorLevel !== null) {
+                        setCurrentFloorLevel(location.floorLevel);
+                    }
                     
                     // Use pixel coordinates from Indoor Atlas if available
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {

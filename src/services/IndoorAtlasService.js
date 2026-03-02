@@ -206,13 +206,7 @@ class IndoorAtlasService {
    */
   onFloorPlanChanged(callback) {
     const subscription = IndoorAtlas.onFloorPlanChanged((floorPlan) => {
-      console.log('[IndoorAtlas] 🗺️ Floor plan:', floorPlan.name, floorPlan.url);
-      callback(floorPlan);
-    });
-
-    this.subscriptions.push(subscription);
-    return subscription;
-  }
+      console.log('[IndoorAtlas] 🗺️ Floor plan changed:');\n      console.log('  - Name:', floorPlan.name);\n      console.log('  - ID:', floorPlan.id);\n      console.log('  - Floor Level:', floorPlan.floorLevel);\n      console.log('  - URL:', floorPlan.url);\n      callback(floorPlan);\n    });\n\n    this.subscriptions.push(subscription);\n    return subscription;\n  }
 
   /**
    * Remove all event subscriptions and cleanup

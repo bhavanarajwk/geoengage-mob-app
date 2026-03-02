@@ -20,7 +20,26 @@ export default function AppNavigator() {
         configureGoogleSignIn();
 
         // Listen to Firebase Auth state changes
-        const unsubscribe = auth().onAuthStateChanged(firebaseUser => {
+        const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
+            if (firebaseUser) {
+                console.log('\n========== USER ALREADY AUTHENTICATED ==========');
+                console.log('📧 Email:', firebaseUser.email);
+                console.log('👤 Display Name:', firebaseUser.displayName);
+                console.log('🆔 User UID:', firebaseUser.uid);
+                
+                // Get fresh ID token
+                try {
+                    const idToken = await firebaseUser.getIdToken();
+                    console.log('🔑 Current Firebase ID Token (JWT):', idToken);
+                } catch (error) {
+                    console.error('❌ Failed to get ID token:', error);
+                }
+                
+                console.log('================================================\n');
+            } else {
+                console.log('⚠️ No user authenticated - showing login screen');
+            }
+            
             setUser(firebaseUser);
             if (initializing) {
                 setInitializing(false);

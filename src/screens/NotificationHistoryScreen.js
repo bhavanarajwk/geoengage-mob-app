@@ -45,10 +45,12 @@ export default function NotificationHistoryScreen({ navigation }) {
     const loadHistory = async () => {
         try {
             setLoading(true);
-            const entries = await ZoneService.getZoneHistory();
+            // Fetch from backend with pagination (50 most recent)
+            const entries = await ZoneService.getZoneHistory(50, 0);
             setHistory(entries);
         } catch (error) {
             console.error('Failed to load zone history:', error);
+            Alert.alert('Error', 'Failed to load notification history. Please try again.');
         } finally {
             setLoading(false);
         }
