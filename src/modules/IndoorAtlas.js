@@ -25,10 +25,10 @@ class IndoorAtlasService {
   static async initialize(apiKey, apiSecret) {
     try {
       const result = await IndoorAtlas.initialize(apiKey, apiSecret);
-      console.log('✅ Indoor Atlas initialized successfully');
+
       return result;
     } catch (error) {
-      console.error('❌ Failed to initialize Indoor Atlas:', error);
+
       throw error;
     }
   }
@@ -40,10 +40,10 @@ class IndoorAtlasService {
   static async startPositioning() {
     try {
       const result = await IndoorAtlas.startPositioning();
-      console.log('✅ Indoor Atlas positioning started');
+
       return result;
     } catch (error) {
-      console.error('❌ Failed to start positioning:', error);
+
       throw error;
     }
   }
@@ -55,10 +55,10 @@ class IndoorAtlasService {
   static async stopPositioning() {
     try {
       const result = await IndoorAtlas.stopPositioning();
-      console.log('✅ Indoor Atlas positioning stopped');
+
       return result;
     } catch (error) {
-      console.error('❌ Failed to stop positioning:', error);
+
       throw error;
     }
   }
@@ -72,7 +72,7 @@ class IndoorAtlasService {
       const location = await IndoorAtlas.getCurrentLocation();
       return location;
     } catch (error) {
-      console.error('❌ Failed to get current location:', error);
+
       throw error;
     }
   }

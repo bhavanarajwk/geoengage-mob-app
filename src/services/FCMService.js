@@ -9,7 +9,7 @@ const FCMService = {
     setupBackgroundHandler() {
         messaging().setBackgroundMessageHandler(async remoteMessage => {
             // Silent processing only — do NOT update UI here
-            console.log('[FCM] Background message received:', remoteMessage);
+
         });
     },
 
@@ -25,15 +25,12 @@ const FCMService = {
             authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
         if (!granted) {
-            console.warn('\n❌ [FCM] Notification permission DENIED');
-            console.warn('User will not receive push notifications\n');
+
             return null;
         }
 
-        console.log('✅ [FCM] Notification permission GRANTED');
         const token = await messaging().getToken();
-        console.log('📱 [FCM] FCM Token generated successfully');
-        console.log('🔑 Token:', token);
+
         return token;
     },
 
@@ -46,7 +43,7 @@ const FCMService = {
      */
     subscribeForeground(onMessage) {
         return messaging().onMessage(async remoteMessage => {
-            console.log('[FCM] Foreground message:', remoteMessage);
+
             onMessage(remoteMessage);
         });
     },
@@ -59,14 +56,14 @@ const FCMService = {
      */
     subscribeBackgroundOpen(onOpen) {
         return messaging().onNotificationOpenedApp(async remoteMessage => {
-            console.log('[FCM] Background notification tapped:', remoteMessage);
+
             if (remoteMessage?.data?.campaign_id) {
                 try {
                     await APIService.post('/api/v1/notification-click', {
                         campaign_id: parseInt(remoteMessage.data.campaign_id, 10),
                     });
                 } catch (err) {
-                    console.warn('[FCM] Failed to track notification click:', err.message);
+
                 }
             }
             onOpen(remoteMessage);
@@ -81,14 +78,14 @@ const FCMService = {
     async checkInitialNotification(onOpen) {
         const remoteMessage = await messaging().getInitialNotification();
         if (remoteMessage) {
-            console.log('[FCM] App opened from killed state via notification:', remoteMessage);
+
             if (remoteMessage?.data?.campaign_id) {
                 try {
                     await APIService.post('/api/v1/notification-click', {
                         campaign_id: parseInt(remoteMessage.data.campaign_id, 10),
                     });
                 } catch (err) {
-                    console.warn('[FCM] Failed to track notification click:', err.message);
+
                 }
             }
             onOpen(remoteMessage);
