@@ -19,6 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import auth from '@react-native-firebase/auth';
 import FCMService from '../services/FCMService';
 import IndoorAtlasService from '../services/IndoorAtlasService';
+import ZoneService from '../services/ZoneService';
 import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
 import { latLngToScreen } from '../utils/coordinateConverter';
@@ -42,11 +43,13 @@ export default function MapScreen({ navigation }) {
     const [unreadNotifications, setUnreadNotifications] = useState(0); // Unread notification count
     const [showLocationWarning, setShowLocationWarning] = useState(false); // Show warning after timeout
     const [loadingDismissed, setLoadingDismissed] = useState(false); // User dismissed loading overlay
+    const [currentZone, setCurrentZone] = useState(null); // Current zone user is in (null if not in any zone)
     
     // Use refs to store current values for use in callbacks
     const floorPlanRef = useRef(null);
     const imageLayoutRef = useRef(null);
     const hasLocationFixRef = useRef(false);
+    const currentZoneRef = useRef(null);
     
     // Update refs when states change
     useEffect(() => {
@@ -63,16 +66,16 @@ export default function MapScreen({ navigation }) {
         hasLocationFixRef.current = hasLocationFix;
     }, [hasLocationFix]);
 
+    useEffect(() => {
+        currentZoneRef.current = currentZone;
+    }, [currentZone]);
+
     // Helper function to calculate scaled position
     const calculateScaledPosition = (pixelX, pixelY) => {
         const currentFloorPlan = floorPlanRef.current;
         const currentImageLayout = imageLayoutRef.current;
         
-        console.log('[MapScreen] calculateScaledPosition - pixelX:', pixelX, 'pixelY:', pixelY);
-        console.log('[MapScreen] currentFloorPlan:', !!currentFloorPlan, 'currentImageLayout:', !!currentImageLayout);
-        
         if (!currentFloorPlan || !currentImageLayout) {
-            console.log('[MapScreen] ⚠️ Missing floorPlan or imageLayout, using direct pixel coords');
             return { x: pixelX, y: pixelY };
         }
         
@@ -101,15 +104,6 @@ export default function MapScreen({ navigation }) {
         const scaleY = renderedHeight / currentFloorPlan.height;
         const scaledX = (pixelX * scaleX) + offsetX;
         const scaledY = (pixelY * scaleY) + offsetY;
-        
-        console.log('[MapScreen] 🎯 Scaling:');
-        console.log('  Bitmap:', currentFloorPlan.width, 'x', currentFloorPlan.height);
-        console.log('  Container:', currentImageLayout.width, 'x', currentImageLayout.height);
-        console.log('  Rendered:', renderedWidth.toFixed(0), 'x', renderedHeight.toFixed(0));
-        console.log('  Offset:', offsetX.toFixed(0), ',', offsetY.toFixed(0));
-        console.log('  Pixel:', pixelX, ',', pixelY);
-        console.log('  Scale:', scaleX.toFixed(3), 'x', scaleY.toFixed(3));
-        console.log('  ✅ FINAL:', scaledX.toFixed(0), ',', scaledY.toFixed(0));
         
         return { x: scaledX, y: scaledY };
     };
@@ -160,6 +154,8 @@ export default function MapScreen({ navigation }) {
         let locationUnsubscribe = null;
         let statusUnsubscribe = null;
         let floorPlanUnsubscribe = null;
+        let geofenceEnterUnsubscribe = null;
+        let geofenceExitUnsubscribe = null;
 
         const requestLocationPermissions = async () => {
             if (Platform.OS !== 'android') {
@@ -179,7 +175,6 @@ export default function MapScreen({ navigation }) {
                 console.log('[MapScreen] Permission results:', { fineGranted, coarseGranted });
 
                 if (fineGranted || coarseGranted) {
-                    console.log('[MapScreen] ✅ Location permissions granted');
                     return true;
                 } else {
                     console.error('[MapScreen] ❌ Location permissions denied');
@@ -198,57 +193,103 @@ export default function MapScreen({ navigation }) {
 
         const initializeIndoorAtlas = async () => {
             try {
-                console.log('[MapScreen] ========== STARTING INITIALIZATION ==========');
                 setIsInitializing(true);
                 
                 // Request location permissions first
-                console.log('[MapScreen] Checking permissions...');
-                
                 const hasPermissions = await requestLocationPermissions();
                 if (!hasPermissions) {
                     setIsInitializing(false);
                     return;
                 }
                 
-                console.log('[MapScreen] Setting status: Initializing SDK...');
-                
                 // Initialize SDK
-                console.log('[MapScreen] Calling IndoorAtlasService.initialize()...');
                 await IndoorAtlasService.initialize();
-                console.log('[MapScreen] Initialize complete! Setting status...');
-                console.log('[MapScreen] Status set to: SDK Initialized ✓');
                 setIsInitializing(false);
                 
                 // Subscribe to floor plan changes
-                console.log('[MapScreen] Subscribing to floor plan changes...');
+                // Subscribe to floor plan changes
                 floorPlanUnsubscribe = IndoorAtlasService.onFloorPlanChanged((floorPlanData) => {
                     if (!isActive) return;
-                    console.log('[MapScreen] 🗺️ Floor plan changed:', floorPlanData);
                     setFloorPlan(floorPlanData);
                 });
                 
                 // Subscribe to status changes
-                console.log('[MapScreen] Subscribing to status changes...');
                 statusUnsubscribe = IndoorAtlasService.onStatusChanged((statusData) => {
                     if (!isActive) return;
-                    console.log('[MapScreen] 📊 Status changed EVENT RECEIVED:', statusData);
                     const newStatus = `${statusData.provider}: ${statusData.statusText}`;
-                    console.log('[MapScreen] Setting status to:', newStatus);
                 });
-                console.log('[MapScreen] Status subscription registered');
+                
+                // Subscribe to geofence enter events
+
+                geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
+                    if (!isActive) return;
+                    
+                    console.log('[MapScreen] 🚪 Entered zone:', region.name || region.id);
+                    
+                    // Check cooldown before notifying
+                    if (ZoneService.shouldNotify(region.id)) {
+                        // Show notification
+                        Alert.alert(
+                            '📍 Zone Entered',
+                            `You have entered ${region.name || 'a zone'}`,
+                            [
+                                { text: 'OK', style: 'default' },
+                            ],
+                            { cancelable: true }
+                        );
+                        
+                        // Mark as notified (start cooldown)
+                        ZoneService.markNotified(region.id);
+                        
+                        // Save to history
+                        ZoneService.saveZoneEntry({
+                            zoneId: region.id,
+                            zoneName: region.name || 'Unknown Zone',
+                            timestamp: Date.now(),
+                            floorLevel: floorPlanRef.current?.floorLevel || null,
+                        }).catch(err => {
+                            console.error('[MapScreen] Failed to save zone entry:', err);
+                        });
+                    } else {
+                        const cooldownRemaining = ZoneService.getCooldownRemaining(region.id);
+                        console.log(`[MapScreen] ⏳ Skipping notification (cooldown: ${cooldownRemaining}s remaining)`);
+                    }
+                    
+                    // Update current zone
+                    setCurrentZone({
+                        id: region.id,
+                        name: region.name || 'Unknown Zone',
+                        type: region.type,
+                    });
+                    ZoneService.setCurrentZone({
+                        id: region.id,
+                        name: region.name,
+                        type: region.type,
+                    });
+                });
+                
+                // Subscribe to geofence exit events
+                geofenceExitUnsubscribe = IndoorAtlasService.onGeofenceExit((region) => {
+                    if (!isActive) return;
+                    
+                    console.log('[MapScreen] 🚶 Exited zone:', region.name || region.id);
+                    
+                    // Clear current zone if it matches the exited zone
+                    if (currentZoneRef.current && currentZoneRef.current.id === region.id) {
+                        setCurrentZone(null);
+                        ZoneService.setCurrentZone(null);
+                    }
+                });
                 
                 // Subscribe to location updates
-                console.log('[MapScreen] Subscribing to location updates...');
                 locationUnsubscribe = IndoorAtlasService.onLocationChanged((location) => {
                     if (!isActive) return;
                     
-                    console.log('[MapScreen] 📍 Location update:', location);
                     setHasLocationFix(true); // We have a location fix
                     
                     // Use pixel coordinates from Indoor Atlas if available
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
                         const scaledPos = calculateScaledPosition(location.pixelX, location.pixelY);
-                        console.log('[MapScreen] Setting position to:', scaledPos);
                         setPosition(scaledPos);
                     } else {
                         // Fallback to our coordinate converter
@@ -259,17 +300,11 @@ export default function MapScreen({ navigation }) {
                 
                 // Start positioning
                 if (isActive) {
-                    console.log('[MapScreen] Setting status: Starting positioning...');
-                    console.log('[MapScreen] Calling startPositioning()...');
                     await IndoorAtlasService.startPositioning();
-                    console.log('[MapScreen] ✅ Indoor Atlas ready');
-                    console.log('[MapScreen] Setting status: Waiting for location...');
-                    console.log('[MapScreen] Status set complete');
                     
                     // Check if we're getting updates after 10 seconds
                     setTimeout(() => {
                         if (isActive && !hasLocationFixRef.current) {
-                            console.log('[MapScreen] ⚠️ Timeout: No location after 10s');
                             setShowLocationWarning(true);
                         }
                     }, 10000);
@@ -301,6 +336,12 @@ export default function MapScreen({ navigation }) {
             }
             if (floorPlanUnsubscribe && typeof floorPlanUnsubscribe.remove === 'function') {
                 floorPlanUnsubscribe.remove();
+            }
+            if (geofenceEnterUnsubscribe && typeof geofenceEnterUnsubscribe.remove === 'function') {
+                geofenceEnterUnsubscribe.remove();
+            }
+            if (geofenceExitUnsubscribe && typeof geofenceExitUnsubscribe.remove === 'function') {
+                geofenceExitUnsubscribe.remove();
             }
             IndoorAtlasService.stopPositioning().catch(err => 
                 console.error('[MapScreen] Error stopping positioning:', err)
@@ -368,6 +409,19 @@ export default function MapScreen({ navigation }) {
                         setImageLayout({ width, height });
                     }}
                 >
+                    {/* Zone Indicator - Show current zone */}
+                    {currentZone && (
+                        <View style={styles.zoneIndicator}>
+                            <View style={styles.zoneIconContainer}>
+                                <Icon name="map-marker-check" size={20} color="#22c55e" />
+                            </View>
+                            <View style={styles.zoneInfo}>
+                                <Text style={styles.zoneLabel}>Current Zone</Text>
+                                <Text style={styles.zoneName}>{currentZone.name}</Text>
+                            </View>
+                        </View>
+                    )}
+                    
                     {/* Loading Overlay - only show if not dismissed and no location fix */}
                     {!loadingDismissed && (isInitializing || !hasLocationFix) && (
                         <View style={[
@@ -601,5 +655,46 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
         color: '#1a1a2e',
+    },
+    zoneIndicator: {
+        position: 'absolute',
+        bottom: 20,
+        left: 20,
+        right: 20,
+        backgroundColor: 'rgba(34, 197, 94, 0.95)',
+        borderRadius: 12,
+        padding: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+    },
+    zoneIconContainer: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    zoneInfo: {
+        flex: 1,
+    },
+    zoneLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.8)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 2,
+    },
+    zoneName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#ffffff',
     },
 });
