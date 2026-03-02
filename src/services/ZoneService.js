@@ -88,7 +88,7 @@ class ZoneService {
           floor_id: floorId,                // Floor number (integer)
         };
         
-        console.log('[ZoneService] 📡 Sending to backend:');
+        console.log('[ZoneService] � Sending to backend:');
         console.log('  - zone_id:', payload.zone_id);
         console.log('  - zone_name:', payload.zone_name);
         console.log('  - floor_id:', payload.floor_id, '(type:', typeof payload.floor_id + ')');
