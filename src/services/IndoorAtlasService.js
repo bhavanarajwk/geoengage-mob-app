@@ -141,12 +141,7 @@ class IndoorAtlasService {
    */
   onLocationChanged(callback) {
     const subscription = IndoorAtlas.onLocationChanged((location) => {
-      console.log('[IndoorAtlas] 📍 Location update:', {
-        lat: location.latitude?.toFixed(6),
-        lng: location.longitude?.toFixed(6),
-        floor: location.floorLevel,
-        accuracy: location.accuracy?.toFixed(2),
-      });
+      // Location updates are too frequent to log
       callback(location);
     });
 

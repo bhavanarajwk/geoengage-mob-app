@@ -70,12 +70,7 @@ export function latLngToScreen(latitude, longitude, calibration = null) {
     x = Math.max(padding, Math.min(SCREEN_WIDTH - padding, x));
     y = Math.max(padding, Math.min(SCREEN_HEIGHT - padding, y));
     
-    console.log('[CoordinateConverter] 📍 Position:', {
-        input: { latitude, longitude },
-        delta: { lat: latDiff.toFixed(6), lng: lngDiff.toFixed(6) },
-        meters: { lat: latMeters.toFixed(2), lng: lngMeters.toFixed(2) },
-        output: { x: x.toFixed(0), y: y.toFixed(0) }
-    });
+    // Position updates are too frequent to log
     
     return { x, y };
 }

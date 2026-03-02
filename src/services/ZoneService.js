@@ -88,11 +88,10 @@ class ZoneService {
           floor_id: floorId,                // Floor number (integer)
         };
         
-        console.log('[ZoneService] 📡 Sending to backend:');
-        console.log('  - zone_id:', payload.zone_id);
-        console.log('  - zone_name:', payload.zone_name);
-        console.log('  - floor_id:', payload.floor_id, '(type:', typeof payload.floor_id + ')');
-        console.log('[ZoneService] 🌐 Endpoint: POST /api/v1/event');
+        console.log('[ZoneService] 📤 Sending to backend POST /api/v1/event');
+        console.log('  → zone_name:', payload.zone_name);
+        console.log('  → floor_id:', payload.floor_id);
+        console.log('  → zone_id:', payload.zone_id, '(IA UUID)');
         const response = await APIService.post('/api/v1/event', payload);
         console.log('[ZoneService] ✅ Backend response:', response.data);
       } catch (apiErr) {
