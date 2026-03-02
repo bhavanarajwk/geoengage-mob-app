@@ -231,7 +231,22 @@ export default function MapScreen({ navigation }) {
                 geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
                     if (!isActive) return;
                     
-                    console.log('[MapScreen] 🚪 Entered zone:', region.name || region.id);
+                    // Log zone entry with SQL for backend team to seed database
+                    const zoneName = region.name || 'Unknown Zone';
+                    const floorId = currentFloorLevelRef.current || 1;
+                    const zoneUuid = region.id;
+                    
+                    console.log('\n╔════════════════════════════════════════════════════════════════╗');
+                    console.log('║  🚪 ZONE ENTERED - Backend Database Seeding Info              ║');
+                    console.log('╠════════════════════════════════════════════════════════════════╣');
+                    console.log('║  Zone Name:', zoneName.padEnd(48), '║');
+                    console.log('║  Floor ID: ', floorId.toString().padEnd(49), '║');
+                    console.log('║  IA UUID:  ', zoneUuid.padEnd(49), '║');
+                    console.log('╠════════════════════════════════════════════════════════════════╣');
+                    console.log('║  SQL for Backend Zone Table:                                   ║');
+                    console.log(`║  INSERT INTO zones (name, floor_id, polygon_coordinates)       ║`);
+                    console.log(`║  VALUES ('${zoneName}', ${floorId}, '{}');`.padEnd(65), '║');
+                    console.log('╚════════════════════════════════════════════════════════════════╝\n');
                     
                     // Check cooldown before notifying
                     if (ZoneService.shouldNotify(region.id)) {

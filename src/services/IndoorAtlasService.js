@@ -115,17 +115,7 @@ class IndoorAtlasService {
     }
 
     try {
-      console.log('[IndoorAtlas] Requesting current location...');
-      
       const location = await IndoorAtlas.getCurrentLocation();
-      
-      console.log('[IndoorAtlas] ✅ Current location:', {
-        lat: location.latitude,
-        lng: location.longitude,
-        floor: location.floorLevel,
-        accuracy: location.accuracy,
-      });
-
       return location;
 
     } catch (error) {
@@ -141,12 +131,7 @@ class IndoorAtlasService {
    */
   onLocationChanged(callback) {
     const subscription = IndoorAtlas.onLocationChanged((location) => {
-      console.log('[IndoorAtlas] 📍 Location update:', {
-        lat: location.latitude?.toFixed(6),
-        lng: location.longitude?.toFixed(6),
-        floor: location.floorLevel,
-        accuracy: location.accuracy?.toFixed(2),
-      });
+      // Location updates are too frequent to log
       callback(location);
     });
 
@@ -206,7 +191,17 @@ class IndoorAtlasService {
    */
   onFloorPlanChanged(callback) {
     const subscription = IndoorAtlas.onFloorPlanChanged((floorPlan) => {
-      console.log('[IndoorAtlas] 🗺️ Floor plan changed:');\n      console.log('  - Name:', floorPlan.name);\n      console.log('  - ID:', floorPlan.id);\n      console.log('  - Floor Level:', floorPlan.floorLevel);\n      console.log('  - URL:', floorPlan.url);\n      callback(floorPlan);\n    });\n\n    this.subscriptions.push(subscription);\n    return subscription;\n  }
+      console.log('[IndoorAtlas] 🗺️ Floor plan changed:');
+      console.log('  - Name:', floorPlan.name);
+      console.log('  - ID:', floorPlan.id);
+      console.log('  - Floor Level:', floorPlan.floorLevel);
+      console.log('  - URL:', floorPlan.url);
+      callback(floorPlan);
+    });
+
+    this.subscriptions.push(subscription);
+    return subscription;
+  }
 
   /**
    * Remove all event subscriptions and cleanup

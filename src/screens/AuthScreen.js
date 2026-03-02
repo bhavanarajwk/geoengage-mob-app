@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import auth from '@react-native-firebase/auth';
 import { signInWithGoogle } from '../services/AuthService';
 import FCMService from '../services/FCMService';
 import APIService from '../services/APIService';
@@ -53,31 +54,55 @@ export default function AuthScreen() {
             const authResult = await signInWithGoogle();
             
             // Log everything Firebase returns
-            console.log('\n========== FIREBASE AUTHENTICATION SUCCESS ==========');
-            console.log('📧 Email:', authResult.user.email);
-            console.log('👤 Display Name:', authResult.user.displayName);
-            console.log('🆔 User UID:', authResult.user.uid);
-            console.log('🔑 Firebase ID Token (JWT):', authResult.firebaseIdToken);
-            console.log('\n--- Additional User Details ---');
-            console.log('Photo URL:', authResult.user.photoURL);
-            console.log('Email Verified:', authResult.user.emailVerified);
-            console.log('Phone Number:', authResult.user.phoneNumber || 'None');
-            console.log('Creation Time:', authResult.user.metadata?.creationTime);
-            console.log('Last Sign In:', authResult.user.metadata?.lastSignInTime);
-            console.log('\n--- Provider Data ---');
-            console.log(JSON.stringify(authResult.user.providerData, null, 2));
-            console.log('\n--- Full User Object (JSON) ---');
-            console.log(JSON.stringify({
-                uid: authResult.user.uid,
-                email: authResult.user.email,
-                displayName: authResult.user.displayName,
-                photoURL: authResult.user.photoURL,
-                emailVerified: authResult.user.emailVerified,
-                phoneNumber: authResult.user.phoneNumber,
-                metadata: authResult.user.metadata,
-                providerData: authResult.user.providerData,
-            }, null, 2));
-            console.log('====================================================\n');
+            console.log('\n╔══════════════════════════════════════════════════════════════════╗');
+            console.log('║           FIREBASE AUTHENTICATION SUCCESS ✅                     ║');
+            console.log('╠══════════════════════════════════════════════════════════════════╣');
+            console.log('║ Email:        ', authResult.user.email.padEnd(46), '║');
+            console.log('║ Display Name: ', (authResult.user.displayName || 'N/A').padEnd(46), '║');
+            console.log('║ User UID:     ', authResult.user.uid.padEnd(46), '║');
+            console.log('╠══════════════════════════════════════════════════════════════════╣');
+            console.log('║ JWT TOKEN FROM SIGN-IN (Copy this to test in Swagger):          ║');
+            console.log('╠══════════════════════════════════════════════════════════════════╣');
+            console.log(authResult.firebaseIdToken);
+            console.log('╠══════════════════════════════════════════════════════════════════╣');
+            console.log('║ Additional User Details:                                         ║');
+            console.log('╠══════════════════════════════════════════════════════════════════╣');
+            console.log('║ Photo URL:      ', (authResult.user.photoURL || 'N/A').substring(0, 44).padEnd(46), '║');
+            console.log('║ Email Verified: ', (authResult.user.emailVerified ? 'Yes' : 'No').padEnd(46), '║');
+            console.log('║ Phone Number:   ', (authResult.user.phoneNumber || 'None').padEnd(46), '║');
+            console.log('║ Creation Time:  ', (authResult.user.metadata?.creationTime || 'N/A').padEnd(46), '║');
+            console.log('║ Last Sign In:   ', (authResult.user.metadata?.lastSignInTime || 'N/A').padEnd(46), '║');
+            console.log('╚══════════════════════════════════════════════════════════════════╝\n');
+
+            // CRITICAL: Wait for Firebase auth state to fully update
+            // This ensures auth().currentUser is set before API calls
+            console.log('\n╔══════════════════════════════════════════════════════════════════╗');
+            console.log('║              WAITING FOR AUTH STATE TO SETTLE                    ║');
+            console.log('╚══════════════════════════════════════════════════════════════════╝');
+            console.log('⏳ Waiting for auth().currentUser to be updated...\n');
+            
+            await new Promise(resolve => {
+                const unsubscribe = auth().onAuthStateChanged(user => {
+                    if (user && user.uid === authResult.user.uid) {
+                        console.log('✅ Auth state confirmed!');
+                        console.log('✅ auth().currentUser is now set');
+                        console.log('✅ Ready to make authenticated API calls\n');
+                        unsubscribe();
+                        resolve();
+                    }
+                });
+                // Fallback timeout in case listener doesn't fire (shouldn't happen)
+                setTimeout(() => {
+                    console.log('⚠️ Auth state timeout - proceeding anyway');
+                    const currentUser = auth().currentUser;
+                    if (currentUser) {
+                        console.log('✅ But auth().currentUser IS set:', currentUser.email);
+                    } else {
+                        console.error('❌ auth().currentUser is STILL NULL - this will cause 401!');
+                    }
+                    resolve();
+                }, 2000);
+            });
 
             // Step 2: Request notification permission and get FCM token
             const fcmToken = await FCMService.requestPermissionAndGetToken();
