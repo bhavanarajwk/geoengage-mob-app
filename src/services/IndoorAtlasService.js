@@ -27,7 +27,7 @@ class IndoorAtlasService {
       validateConfig();
 
       console.log('[IndoorAtlas] Initializing SDK...');
-      
+
       await IndoorAtlas.initialize(
         INDOOR_ATLAS_CONFIG.apiKey,
         INDOOR_ATLAS_CONFIG.apiSecret
@@ -59,9 +59,9 @@ class IndoorAtlasService {
 
     try {
       console.log('[IndoorAtlas] Starting positioning...');
-      
+
       const success = await IndoorAtlas.startPositioning();
-      
+
       if (success) {
         this.isPositioning = true;
         console.log('[IndoorAtlas] ✅ Positioning started');
@@ -89,9 +89,9 @@ class IndoorAtlasService {
 
     try {
       console.log('[IndoorAtlas] Stopping positioning...');
-      
+
       const success = await IndoorAtlas.stopPositioning();
-      
+
       if (success) {
         this.isPositioning = false;
         console.log('[IndoorAtlas] ✅ Positioning stopped');
@@ -115,7 +115,17 @@ class IndoorAtlasService {
     }
 
     try {
+      console.log('[IndoorAtlas] Requesting current location...');
+
       const location = await IndoorAtlas.getCurrentLocation();
+
+      console.log('[IndoorAtlas] ✅ Current location:', {
+        lat: location.latitude,
+        lng: location.longitude,
+        floor: location.floorLevel,
+        accuracy: location.accuracy,
+      });
+
       return location;
 
     } catch (error) {
@@ -191,6 +201,7 @@ class IndoorAtlasService {
    */
   onFloorPlanChanged(callback) {
     const subscription = IndoorAtlas.onFloorPlanChanged((floorPlan) => {
+
       console.log('[IndoorAtlas] 🗺️ Floor plan changed:');
       console.log('  - Name:', floorPlan.name);
       console.log('  - ID:', floorPlan.id);
@@ -208,16 +219,16 @@ class IndoorAtlasService {
    */
   cleanup() {
     console.log('[IndoorAtlas] Cleaning up subscriptions...');
-    
+
     // Remove all subscriptions
     this.subscriptions.forEach(sub => {
       if (sub && typeof sub.remove === 'function') {
         sub.remove();
       }
     });
-    
+
     this.subscriptions = [];
-    
+
     console.log('[IndoorAtlas] ✅ Cleanup complete');
   }
 
@@ -226,14 +237,14 @@ class IndoorAtlasService {
    */
   async shutdown() {
     console.log('[IndoorAtlas] Shutting down...');
-    
+
     if (this.isPositioning) {
       await this.stopPositioning();
     }
-    
+
     this.cleanup();
     this.isInitialized = false;
-    
+
     console.log('[IndoorAtlas] ✅ Shutdown complete');
   }
 }
