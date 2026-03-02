@@ -55,17 +55,17 @@ export default function MapScreen({ navigation }) {
     // ── Sync refs ─────────────────────────────────────────────────────────────
     useEffect(() => {
         floorPlanRef.current = floorPlan;
-        console.log('[MapScreen] floorPlanRef updated:', !!floorPlan);
+
     }, [floorPlan]);
 
     useEffect(() => {
         currentFloorLevelRef.current = currentFloorLevel;
-        console.log('[MapScreen] Current floor level:', currentFloorLevel);
+
     }, [currentFloorLevel]);
 
     useEffect(() => {
         imageLayoutRef.current = imageLayout;
-        console.log('[MapScreen] imageLayoutRef updated:', !!imageLayout);
+
     }, [imageLayout]);
 
     useEffect(() => { hasLocationFixRef.current = hasLocationFix; }, [hasLocationFix]);
@@ -158,18 +158,18 @@ export default function MapScreen({ navigation }) {
         const requestLocationPermissions = async () => {
             if (Platform.OS !== 'android') return true;
             try {
-                console.log('[MapScreen] Requesting location permissions...');
+
                 const granted = await PermissionsAndroid.requestMultiple([
                     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
                     PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
                 ]);
                 const fineGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
                 const coarseGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
-                console.log('[MapScreen] Permission results:', { fineGranted, coarseGranted });
+
                 if (fineGranted || coarseGranted) return true;
                 Alert.alert('Location Permission Required', 'Indoor positioning requires location access. Please grant location permissions in Settings.', [{ text: 'OK' }]);
                 return false;
-            } catch (err) { console.error('[MapScreen] Error requesting permissions:', err); return false; }
+            } catch (err) {  return false; }
         };
 
         const initializeIndoorAtlas = async () => {
@@ -186,15 +186,12 @@ export default function MapScreen({ navigation }) {
 
                 geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
                     if (!isActive) return;
-                    console.log('[MapScreen] 🚪 Entered zone:', region.name || region.id);
+
                     if (ZoneService.shouldNotify(region.id)) {
                         Alert.alert('📍 Zone Entered', `You have entered ${region.name || 'a zone'}`, [{ text: 'OK', style: 'default' }], { cancelable: true });
                         ZoneService.markNotified(region.id);
                         ZoneService.saveZoneEntry({ zoneId: region.id, zoneName: region.name || 'Unknown Zone', timestamp: Date.now(), floorLevel: currentFloorLevelRef.current })
-                            .catch(err => console.error('[MapScreen] Failed to save zone entry:', err));
-                    } else {
-                        const cooldownRemaining = ZoneService.getCooldownRemaining(region.id);
-                        console.log(`[MapScreen] ⏳ Skipping notification (cooldown: ${cooldownRemaining}s remaining)`);
+                            .catch(() => {});
                     }
                     setCurrentZone({ id: region.id, name: region.name || 'Unknown Zone', type: region.type });
                     ZoneService.setCurrentZone({ id: region.id, name: region.name, type: region.type });
@@ -202,7 +199,7 @@ export default function MapScreen({ navigation }) {
 
                 geofenceExitUnsubscribe = IndoorAtlasService.onGeofenceExit((region) => {
                     if (!isActive) return;
-                    console.log('[MapScreen] 🚶 Exited zone:', region.name || region.id);
+
                     if (currentZoneRef.current && currentZoneRef.current.id === region.id) {
                         setCurrentZone(null);
                         ZoneService.setCurrentZone(null);
@@ -225,9 +222,8 @@ export default function MapScreen({ navigation }) {
                     setTimeout(() => { if (isActive && !hasLocationFixRef.current) setShowLocationWarning(true); }, 10000);
                 }
 
-                console.log('[MapScreen] ========== INITIALIZATION COMPLETE ==========');
             } catch (error) {
-                console.error('[MapScreen] ❌ Indoor Atlas initialization failed:', error);
+
                 setIsInitializing(false);
                 Alert.alert('Indoor Positioning Error', 'Failed to initialize indoor positioning. Some features may not work.', [{ text: 'OK' }]);
             }
@@ -239,7 +235,7 @@ export default function MapScreen({ navigation }) {
             isActive = false;
             [locationUnsubscribe, statusUnsubscribe, floorPlanUnsubscribe, geofenceEnterUnsubscribe, geofenceExitUnsubscribe]
                 .forEach(u => u?.remove?.());
-            IndoorAtlasService.stopPositioning().catch(err => console.error('[MapScreen] Error stopping positioning:', err));
+            IndoorAtlasService.stopPositioning().catch(() => {});
         };
     }, []);
 
@@ -319,7 +315,7 @@ export default function MapScreen({ navigation }) {
                         resizeMode="contain"
                         onLayout={(event) => {
                             const { width, height } = event.nativeEvent.layout;
-                            console.log('[MapScreen] ImageBackground layout:', width, height);
+
                             setImageLayout({ width, height });
                         }}
                     >

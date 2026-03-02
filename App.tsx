@@ -1,8 +1,16 @@
 import React, { useEffect } from 'react';
+import { LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider as PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import AppNavigator from './src/navigation/AppNavigator';
 import { configureGoogleSignIn } from './src/services/AuthService';
+
+// Suppress warnings that don't affect functionality
+LogBox.ignoreLogs([
+  'new NativeEventEmitter',
+  'This method is deprecated',
+  'React Native Firebase',
+]);
 
 // Custom theme based on existing dark theme
 const theme = {

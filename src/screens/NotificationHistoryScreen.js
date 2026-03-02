@@ -66,7 +66,7 @@ export default function NotificationHistoryScreen({ navigation }) {
             const entries = await ZoneService.getZoneHistory(50, 0);
             setHistory(entries);
         } catch (error) {
-            console.error('Failed to load zone history:', error);
+
             Alert.alert('Error', 'Failed to load notification history. Please try again.');
         } finally {
             setLoading(false);
@@ -94,7 +94,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                             setHistory([]);
                             exitSelectionMode();
                         } catch (error) {
-                            console.error('Failed to clear history:', error);
+
                             Alert.alert('Error', 'Failed to clear history');
                         }
                     },

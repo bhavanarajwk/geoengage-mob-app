@@ -65,116 +65,49 @@ export default function AuthScreen() {
         setLoading(true);
         try {
             const authResult = await signInWithGoogle();
-            
+
             // Log everything Firebase returns
-            console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-            console.log('║           FIREBASE AUTHENTICATION SUCCESS ✅                     ║');
-            console.log('╠══════════════════════════════════════════════════════════════════╣');
-            console.log('║ Email:        ', authResult.user.email.padEnd(46), '║');
-            console.log('║ Display Name: ', (authResult.user.displayName || 'N/A').padEnd(46), '║');
-            console.log('║ User UID:     ', authResult.user.uid.padEnd(46), '║');
-            console.log('╠══════════════════════════════════════════════════════════════════╣');
-            console.log('║ JWT TOKEN FROM SIGN-IN (Copy this to test in Swagger):          ║');
-            console.log('╠══════════════════════════════════════════════════════════════════╣');
-            console.log(authResult.firebaseIdToken);
-            console.log('╠══════════════════════════════════════════════════════════════════╣');
-            console.log('║ Additional User Details:                                         ║');
-            console.log('╠══════════════════════════════════════════════════════════════════╣');
-            console.log('║ Photo URL:      ', (authResult.user.photoURL || 'N/A').substring(0, 44).padEnd(46), '║');
-            console.log('║ Email Verified: ', (authResult.user.emailVerified ? 'Yes' : 'No').padEnd(46), '║');
-            console.log('║ Phone Number:   ', (authResult.user.phoneNumber || 'None').padEnd(46), '║');
-            console.log('║ Creation Time:  ', (authResult.user.metadata?.creationTime || 'N/A').padEnd(46), '║');
-            console.log('║ Last Sign In:   ', (authResult.user.metadata?.lastSignInTime || 'N/A').padEnd(46), '║');
-            console.log('╚══════════════════════════════════════════════════════════════════╝\n');
 
             // CRITICAL: Wait for Firebase auth state to fully update
             // This ensures auth().currentUser is set before API calls
-            console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-            console.log('║              WAITING FOR AUTH STATE TO SETTLE                    ║');
-            console.log('╚══════════════════════════════════════════════════════════════════╝');
-            console.log('⏳ Waiting for auth().currentUser to be updated...\n');
-            
+
             await new Promise(resolve => {
                 const unsubscribe = auth().onAuthStateChanged(user => {
                     if (user && user.uid === authResult.user.uid) {
-                        console.log('✅ Auth state confirmed!');
-                        console.log('✅ auth().currentUser is now set');
-                        console.log('✅ Ready to make authenticated API calls\n');
+
                         unsubscribe();
                         resolve();
                     }
                 });
                 // Fallback timeout in case listener doesn't fire (shouldn't happen)
                 setTimeout(() => {
-                    console.log('⚠️ Auth state timeout - proceeding anyway');
+
                     const currentUser = auth().currentUser;
                     if (currentUser) {
-                        console.log('✅ But auth().currentUser IS set:', currentUser.email);
+
                     } else {
-                        console.error('❌ auth().currentUser is STILL NULL - this will cause 401!');
+
                     }
                     resolve();
                 }, 2000);
             });
 
-            console.log('\n========== FIREBASE AUTHENTICATION SUCCESS ==========');
-            console.log('📧 Email:', authResult.user.email);
-            console.log('👤 Display Name:', authResult.user.displayName);
-            console.log('🆔 User UID:', authResult.user.uid);
-            console.log('🔑 Firebase ID Token (JWT):', authResult.firebaseIdToken);
-            console.log('\n--- Additional User Details ---');
-            console.log('Photo URL:', authResult.user.photoURL);
-            console.log('Email Verified:', authResult.user.emailVerified);
-            console.log('Phone Number:', authResult.user.phoneNumber || 'None');
-            console.log('Creation Time:', authResult.user.metadata?.creationTime);
-            console.log('Last Sign In:', authResult.user.metadata?.lastSignInTime);
-            console.log('\n--- Provider Data ---');
-            console.log(JSON.stringify(authResult.user.providerData, null, 2));
-            console.log('\n--- Full User Object (JSON) ---');
-            console.log(JSON.stringify({
-                uid: authResult.user.uid,
-                email: authResult.user.email,
-                displayName: authResult.user.displayName,
-                photoURL: authResult.user.photoURL,
-                emailVerified: authResult.user.emailVerified,
-                phoneNumber: authResult.user.phoneNumber,
-                metadata: authResult.user.metadata,
-                providerData: authResult.user.providerData,
-            }, null, 2));
-            console.log('====================================================\n');
-
             const fcmToken = await FCMService.requestPermissionAndGetToken();
 
             if (fcmToken) {
-                console.log('\n========== FCM TOKEN RETRIEVED ==========');
-                console.log('🔔 FCM Token:', fcmToken);
-                console.log('📱 Device registered for push notifications');
-                console.log('=========================================\n');
 
                 try {
-                    console.log('📡 Calling POST /api/v1/register-device...');
-                    console.log('📦 Payload:', { fcm_token: fcmToken });
-                    console.log('🔐 Authorization: Bearer <jwt> (attached automatically)');
 
                     const response = await APIService.post('/api/v1/register-device', { fcm_token: fcmToken });
 
-                    console.log('\n========== BACKEND RESPONSE ==========');
-                    console.log('✅ Status:', response.status);
-                    console.log('📥 Response Data:', JSON.stringify(response.data, null, 2));
-                    console.log('======================================\n');
-                    console.log('✅ Device successfully registered with backend');
                 } catch (apiErr) {
-                    console.log('\n========== BACKEND ERROR ==========');
-                    console.error('❌ Error:', apiErr.message);
-                    console.error('📛 Status:', apiErr.response?.status);
-                    console.error('📥 Response:', JSON.stringify(apiErr.response?.data, null, 2));
-                    console.log('===================================\n');
+
                 }
             } else {
-                console.log('⚠️ FCM Token is null - notification permission may be denied');
+
             }
         } catch (error) {
-            console.error('[Auth] Sign-in error:', error);
+
             if (error.code === 'SIGN_IN_CANCELLED') {
                 // User cancelled — do nothing
             } else {

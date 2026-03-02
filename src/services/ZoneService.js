@@ -18,7 +18,7 @@ class ZoneService {
     // In-memory cooldown tracking (persists during app session)
     // Format: Map<zoneId, timestamp>
     this.lastNotified = new Map();
-    
+
     // Current zone user is in
     this.currentZone = null;
   }
@@ -42,8 +42,6 @@ class ZoneService {
     const timeSinceLastNotification = (now - lastNotification) / 1000; // Convert to seconds
     const shouldNotify = timeSinceLastNotification >= COOLDOWN_SECONDS;
 
-    console.log(`[ZoneService] Zone: ${zoneId}, Last notified: ${Math.floor(timeSinceLastNotification)}s ago, Should notify: ${shouldNotify}`);
-
     return shouldNotify;
   }
 
@@ -56,7 +54,7 @@ class ZoneService {
   markNotified(zoneId) {
     const now = Date.now();
     this.lastNotified.set(zoneId, now);
-    console.log(`[ZoneService] Marked zone ${zoneId} as notified at ${new Date(now).toISOString()}`);
+
   }
 
   /**
@@ -71,7 +69,6 @@ class ZoneService {
    */
   async saveZoneEntry(entry) {
     try {
-      console.log('[ZoneService] Saving zone entry:', entry);
 
       // Save to backend first (triggers campaigns)
       try {
@@ -81,24 +78,19 @@ class ZoneService {
         const floorId = entry.floorLevel !== null && entry.floorLevel !== undefined 
           ? entry.floorLevel 
           : 1;
-        
+
         const payload = {
           zone_id: entry.zoneId,           // Indoor Atlas zone UUID (string)
           zone_name: entry.zoneName,        // Human-readable zone name (string)
           floor_id: floorId,                // Floor number (integer)
         };
-        
-        console.log('[ZoneService] 📤 Sending to backend POST /api/v1/event');
-        console.log('  → zone_name:', payload.zone_name);
-        console.log('  → floor_id:', payload.floor_id);
-        console.log('  → zone_id:', payload.zone_id, '(IA UUID)');
+
         const response = await APIService.post('/api/v1/event', payload);
-        console.log('[ZoneService] ✅ Backend response:', response.data);
+
       } catch (apiErr) {
-        console.error('[ZoneService] ❌ Backend error:', apiErr.response?.status, apiErr.response?.data);
+
         if (apiErr.response?.status === 401) {
-          console.error('[ZoneService] 🚫 401 Unauthorized - Check if JWT is being sent correctly');
-          console.error('[ZoneService] 📋 Error details:', JSON.stringify(apiErr.response?.data, null, 2));
+
         }
         // Continue to save locally even if backend fails
       }
@@ -112,11 +104,9 @@ class ZoneService {
       });
       const trimmedHistory = history.slice(0, 100);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedHistory));
-      
-      console.log('[ZoneService] ✅ Zone entry saved locally');
 
     } catch (error) {
-      console.error('[ZoneService] ❌ Failed to save zone entry:', error);
+
       throw error;
     }
   }
@@ -131,28 +121,25 @@ class ZoneService {
    */
   async getZoneHistory(limit = 50, offset = 0) {
     try {
-      console.log(`[ZoneService] 📡 Fetching history from backend (limit=${limit}, offset=${offset})`);
-      
+
       const response = await APIService.get('/api/v1/notifications', {
         params: { limit, offset },
       });
-      
-      console.log(`[ZoneService] ✅ Retrieved ${response.data?.length || 0} entries from backend`);
+
       return response.data || [];
-      
+
     } catch (apiErr) {
-      console.warn('[ZoneService] ⚠️ Backend fetch failed, using local storage:', apiErr.message);
-      
+
       // Fallback to AsyncStorage
       try {
         const data = await AsyncStorage.getItem(STORAGE_KEY);
         if (!data) return [];
-        
+
         const history = JSON.parse(data);
-        console.log(`[ZoneService] Retrieved ${history.length} entries from local storage`);
+
         return history;
       } catch (storageErr) {
-        console.error('[ZoneService] ❌ Failed to get zone history from storage:', storageErr);
+
         return [];
       }
     }
@@ -167,13 +154,12 @@ class ZoneService {
   async clearHistory() {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
-      console.log('[ZoneService] ✅ Zone history cleared');
 
       // 🔄 FUTURE: Replace above with API call
       // await APIService.clearZoneHistory();
 
     } catch (error) {
-      console.error('[ZoneService] ❌ Failed to clear zone history:', error);
+
       throw error;
     }
   }
@@ -188,11 +174,11 @@ class ZoneService {
    */
   setCurrentZone(zone) {
     this.currentZone = zone;
-    
+
     if (zone) {
-      console.log(`[ZoneService] Current zone set to: ${zone.name} (${zone.id})`);
+
     } else {
-      console.log('[ZoneService] Exited all zones');
+
     }
   }
 
@@ -210,7 +196,7 @@ class ZoneService {
    */
   clearCooldowns() {
     this.lastNotified.clear();
-    console.log('[ZoneService] All cooldowns cleared');
+
   }
 
   /**
@@ -221,7 +207,7 @@ class ZoneService {
    */
   getCooldownRemaining(zoneId) {
     const lastNotification = this.lastNotified.get(zoneId);
-    
+
     if (!lastNotification) {
       return 0;
     }
@@ -229,7 +215,7 @@ class ZoneService {
     const now = Date.now();
     const timeSinceLastNotification = (now - lastNotification) / 1000;
     const remaining = Math.max(0, COOLDOWN_SECONDS - timeSinceLastNotification);
-    
+
     return Math.ceil(remaining);
   }
 }
