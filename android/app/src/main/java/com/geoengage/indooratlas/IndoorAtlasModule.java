@@ -25,9 +25,14 @@ import com.indooratlas.android.sdk.IALocationListener;
 import com.indooratlas.android.sdk.IALocationManager;
 import com.indooratlas.android.sdk.IALocationRequest;
 import com.indooratlas.android.sdk.IARegion;
+import com.indooratlas.android.sdk.IAGeofence;
+import com.indooratlas.android.sdk.IAGeofenceEvent;
+import com.indooratlas.android.sdk.IAGeofenceListener;
+import com.indooratlas.android.sdk.IAGeofenceRequest;
 import com.indooratlas.android.sdk.resources.IAFloorPlan;
 import com.indooratlas.android.sdk.resources.IALatLng;
 import android.graphics.PointF;
+import java.util.ArrayList;
 
 public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     
@@ -129,6 +134,9 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                 }
                 
                 isPositioning = true;
+                
+                // Add cloud geofences for POI detection (Pantry, Meeting Room, etc.)
+                addCloudGeofences();
                 
                 Log.d(TAG, "Positioning started");
                 promise.resolve(true);
@@ -269,8 +277,6 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     private final IALocationListener locationListener = new IALocationListener() {
         @Override
         public void onLocationChanged(IALocation location) {
-            Log.d(TAG, "[DEBUG] onLocationChanged called! Lat: " + location.getLatitude() + ", Lng: " + location.getLongitude());
-            
             // Process floor plan if available
             processFloorPlan(location);
             
@@ -283,7 +289,6 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                     PointF pixelCoords = floorPlan.coordinateToPoint(new IALatLng(location.getLatitude(), location.getLongitude()));
                     locationData.putDouble("pixelX", pixelCoords.x);
                     locationData.putDouble("pixelY", pixelCoords.y);
-                    Log.d(TAG, "[DEBUG] Pixel coordinates: " + pixelCoords.x + ", " + pixelCoords.y);
                 }
             }
             
@@ -304,12 +309,12 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     };
     
     /**
-     * Region listener - receives geofence enter/exit events
+     * Region listener - receives venue/floor enter/exit events
      */
     private final IARegion.Listener regionListener = new IARegion.Listener() {
         @Override
         public void onEnterRegion(IARegion region) {
-            Log.d(TAG, "Entered region: " + region.getName() + " (ID: " + region.getId() + ")");
+            Log.d(TAG, "Entered region: " + region.getName() + " (ID: " + region.getId() + ", type: " + region.getType() + ")");
             
             WritableMap regionData = Arguments.createMap();
             regionData.putString("id", region.getId());
@@ -322,7 +327,7 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
         
         @Override
         public void onExitRegion(IARegion region) {
-            Log.d(TAG, "Exited region: " + region.getName() + " (ID: " + region.getId() + ")");
+            Log.d(TAG, "Exited region: " + region.getName() + " (ID: " + region.getId() + ", type: " + region.getType() + ")");
             
             WritableMap regionData = Arguments.createMap();
             regionData.putString("id", region.getId());
@@ -333,6 +338,60 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
             sendEvent(EVENT_GEOFENCE_EXIT, regionData);
         }
     };
+    
+    /**
+     * Geofence listener - receives POI-level geofence events (Pantry, Meeting Room, etc.)
+     */
+    private final IAGeofenceListener geofenceListener = new IAGeofenceListener() {
+        @Override
+        public void onGeofencesTriggered(IAGeofenceEvent event) {
+            int transition = event.getGeofenceTransition();
+            ArrayList<IAGeofence> triggeredGeofences = event.getTriggeringGeofences();
+            
+            Log.d(TAG, "Geofences triggered! Transition: " + (transition == IAGeofence.GEOFENCE_TRANSITION_ENTER ? "ENTER" : "EXIT") + ", Count: " + triggeredGeofences.size());
+            
+            for (IAGeofence geofence : triggeredGeofences) {
+                Log.d(TAG, "  - Geofence: " + geofence.getName() + " (ID: " + geofence.getId() + ")");
+                
+                WritableMap geofenceData = Arguments.createMap();
+                geofenceData.putString("id", geofence.getId());
+                geofenceData.putString("name", geofence.getName());
+                geofenceData.putInt("type", 99); // Custom type for POI geofences
+                geofenceData.putDouble("timestamp", System.currentTimeMillis());
+                
+                if (geofence.hasFloor()) {
+                    geofenceData.putInt("floor", geofence.getFloor());
+                }
+                
+                if (transition == IAGeofence.GEOFENCE_TRANSITION_ENTER) {
+                    sendEvent(EVENT_GEOFENCE_ENTER, geofenceData);
+                } else if (transition == IAGeofence.GEOFENCE_TRANSITION_EXIT) {
+                    sendEvent(EVENT_GEOFENCE_EXIT, geofenceData);
+                }
+            }
+        }
+    };
+    
+    /**
+     * Request cloud-based geofences from Indoor Atlas Dashboard
+     */
+    private void addCloudGeofences() {
+        try {
+            Log.d(TAG, "[DEBUG] Requesting cloud geofences from IA Dashboard...");
+            
+            // Build geofence request with cloud geofences enabled
+            IAGeofenceRequest geofenceRequest = new IAGeofenceRequest.Builder()
+                .withCloudGeofences(true)
+                .build();
+            
+            // Register geofence listener
+            locationManager.addGeofences(geofenceRequest, geofenceListener);
+            
+            Log.d(TAG, "[DEBUG] ✅ Cloud geofences registered successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "[DEBUG] ❌ Error registering cloud geofences: " + e.getMessage(), e);
+        }
+    }
     
     /**
      * Helper: Convert status code to readable text
@@ -393,6 +452,7 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
         if (locationManager != null) {
             locationManager.removeLocationUpdates(locationListener);
             locationManager.unregisterRegionListener(regionListener);
+            locationManager.removeGeofenceUpdates(geofenceListener);
             locationManager.destroy();
             locationManager = null;
         }
