@@ -25,6 +25,7 @@ import APIService from '../services/APIService';
 import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
 import InAppNotificationBanner from '../components/InAppNotificationBanner';
+import IndoorMapView from '../components/IndoorMapView';
 import { latLngToScreen } from '../utils/coordinateConverter';
 
 const floorPlanImage = require('../../assets/floorplan.png');
@@ -380,7 +381,7 @@ export default function MapScreen({ navigation }) {
                     setHasLocationFix(true);
                     if (location.floorLevel !== undefined && location.floorLevel !== null) setCurrentFloorLevel(location.floorLevel);
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
-                        setPosition(calculateScaledPosition(location.pixelX, location.pixelY));
+                        setPosition({ x: location.pixelX, y: location.pixelY });
                     } else {
                         setPosition(latLngToScreen(location.latitude, location.longitude));
                     }
@@ -504,16 +505,26 @@ export default function MapScreen({ navigation }) {
                 </View>
 
                 <View style={styles.mapContainer}>
-                    <ImageBackground
-                        source={floorPlan ? { uri: floorPlan.url } : floorPlanImage}
-                        style={styles.floorPlan}
-                        resizeMode="contain"
-                        onLayout={(event) => {
-                            const { width, height } = event.nativeEvent.layout;
+                    {floorPlan ? (
+                        <IndoorMapView
+                            floorPlan={{
+                                url: floorPlan.url,
+                                width: floorPlan.width,
+                                height: floorPlan.height,
+                            }}
+                            userLocation={{ pixelX: position.x, pixelY: position.y }}
+                        />
+                    ) : (
+                        <ImageBackground
+                            source={floorPlanImage}
+                            style={styles.floorPlan}
+                            resizeMode="contain"
+                            onLayout={(event) => {
+                                const { width, height } = event.nativeEvent.layout;
 
-                            setImageLayout({ width, height });
-                        }}
-                    >
+                                setImageLayout({ width, height });
+                            }}
+                        >
                         {/* Zone Banner */}
                         {currentZone && (
                             <Animated.View
@@ -581,8 +592,9 @@ export default function MapScreen({ navigation }) {
                             </View>
                         )}
 
-                        <BlueDot x={position.x} y={position.y} size={24} />
-                    </ImageBackground>
+                            <BlueDot x={position.x} y={position.y} size={24} />
+                        </ImageBackground>
+                    )}
                 </View>
             </View>
 

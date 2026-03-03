@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Provider as PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import AppNavigator from './src/navigation/AppNavigator';
 import { configureGoogleSignIn } from './src/services/AuthService';
@@ -35,10 +36,12 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <PaperProvider theme={theme}>
-        <AppNavigator />
-      </PaperProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <PaperProvider theme={theme}>
+          <AppNavigator />
+        </PaperProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
