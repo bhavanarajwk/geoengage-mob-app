@@ -103,6 +103,7 @@ const NotificationStore = {
         const notification = {
             id,
             campaignId,
+            notificationId: raw.notificationId || null,
             zoneName: raw.zoneName || null,
             floor: typeof raw.floor === 'number' ? raw.floor : null,
             title: raw.title || 'New notification',

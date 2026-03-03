@@ -239,17 +239,21 @@ export default function MapScreen({ navigation }) {
         const handleRemoteMessage = async (remoteMessage, { openedFromNotification } = { openedFromNotification: false }) => {
             if (!remoteMessage) return;
 
-            const title = remoteMessage.notification?.title || '📍 New Offer!';
-            const message = remoteMessage.notification?.body || remoteMessage.data?.message || 'You have a new notification.';
-
+            const notif = remoteMessage.notification || {};
             const data = remoteMessage.data || {};
+
+            const title = notif.title || 'GeoEngage';
+            const message = notif.body || '';
+
             const campaignId = data.campaign_id ? parseInt(data.campaign_id, 10) : null;
             const zoneName = data.zone_name || null;
             const floor = data.floor_id ? parseInt(data.floor_id, 10) : null;
+            const notificationId = data.notification_id || null;
 
             const stored = await NotificationStore.addNotification({
                 id: remoteMessage.messageId,
                 campaignId,
+                notificationId,
                 zoneName,
                 floor,
                 title,

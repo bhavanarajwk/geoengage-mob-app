@@ -249,8 +249,13 @@ export default function NotificationHistoryScreen({ navigation }) {
                 {/* Content */}
                 <View style={styles.historyContent}>
                     <Text style={[styles.zoneName, !item.read && styles.zoneNameUnread]} numberOfLines={1}>
-                        {item.zoneName || item.title}
+                        {item.zoneName || item.title || 'GeoEngage'}
                     </Text>
+                    {!!item.message && (
+                        <Text style={styles.messageText} numberOfLines={2}>
+                            {item.message}
+                        </Text>
+                    )}
                     <View style={styles.historyMeta}>
                         {item.floor !== null && item.floor !== undefined && (
                             <View style={styles.floorBadge}>
@@ -307,7 +312,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                 <Text style={styles.headerTitle}>
                     {selectionMode
                         ? `${selectedIds.size} Selected`
-                        : 'Zone History'}
+                        : 'Notification History'}
                 </Text>
 
                 <View style={styles.headerRight}>
@@ -346,7 +351,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                 <FlatList
                     data={history}
                     renderItem={renderHistoryItem}
-                    keyExtractor={(item, index) => `${item.zoneId}-${item.timestamp}-${index}`}
+                    keyExtractor={(item) => item.id}
                     contentContainerStyle={styles.listContent}
                     refreshControl={
                         <RefreshControl
@@ -546,6 +551,11 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#e2e8f0',
         marginBottom: 5,
+    },
+    messageText: {
+        fontSize: 13,
+        color: '#9ca3af',
+        marginBottom: 4,
     },
     historyMeta: {
         flexDirection: 'row',
