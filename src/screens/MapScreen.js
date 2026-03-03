@@ -349,12 +349,6 @@ export default function MapScreen({ navigation }) {
                     });
 
                     if (ZoneService.shouldNotify(region.id)) {
-                        Alert.alert(
-                            '📍 Zone Entered',
-                            `You have entered ${region.name || 'a zone'}`,
-                            [{ text: 'OK', style: 'default' }],
-                            { cancelable: true },
-                        );
                         ZoneService.markNotified(region.id);
                         ZoneService.saveZoneEntry({
                             eventType,
