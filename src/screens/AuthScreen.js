@@ -66,7 +66,10 @@ export default function AuthScreen() {
         try {
             const authResult = await signInWithGoogle();
 
-            // Log everything Firebase returns
+            // eslint-disable-next-line no-console
+            console.log('[AuthScreen] Firebase user UID:', authResult.user?.uid);
+            // eslint-disable-next-line no-console
+            console.log('[AuthScreen] Firebase ID token:', authResult.firebaseIdToken);
 
             // CRITICAL: Wait for Firebase auth state to fully update
             // This ensures auth().currentUser is set before API calls
@@ -93,6 +96,9 @@ export default function AuthScreen() {
             });
 
             const fcmToken = await FCMService.requestPermissionAndGetToken();
+
+            // eslint-disable-next-line no-console
+            console.log('[AuthScreen] FCM token:', fcmToken);
 
             if (fcmToken) {
 

@@ -20,6 +20,8 @@ import auth from '@react-native-firebase/auth';
 import FCMService from '../services/FCMService';
 import IndoorAtlasService from '../services/IndoorAtlasService';
 import ZoneService from '../services/ZoneService';
+import NotificationStore from '../services/NotificationStore';
+import APIService from '../services/APIService';
 import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
 import { latLngToScreen } from '../utils/coordinateConverter';
@@ -124,28 +126,80 @@ export default function MapScreen({ navigation }) {
         return { x: (pixelX * scaleX) + offsetX, y: (pixelY * scaleY) + offsetY };
     };
 
-    // ── FCM (unchanged) ───────────────────────────────────────────────────────
+    // ── FCM (foreground + background handling) ────────────────────────────────
     useEffect(() => {
-        const unsubscribeForeground = FCMService.subscribeForeground(remoteMessage => {
+        const handleRemoteMessage = async (remoteMessage, { openedFromNotification } = { openedFromNotification: false }) => {
+            if (!remoteMessage) return;
+
+            const title = remoteMessage.notification?.title || '📍 New Offer!';
+            const message = remoteMessage.notification?.body || remoteMessage.data?.message || 'You have a new notification.';
+
+            const data = remoteMessage.data || {};
+            const campaignId = data.campaign_id ? parseInt(data.campaign_id, 10) : null;
+            const zoneName = data.zone_name || null;
+            const floor = data.floor_id ? parseInt(data.floor_id, 10) : null;
+
+            const stored = await NotificationStore.addNotification({
+                id: remoteMessage.messageId,
+                campaignId,
+                zoneName,
+                floor,
+                title,
+                message,
+                receivedAt: Date.now(),
+                read: !!openedFromNotification,
+                clicked: !!openedFromNotification,
+                messageId: remoteMessage.messageId,
+            });
+
+            if (openedFromNotification) {
+                setUnreadNotifications(0);
+                navigation.navigate('NotificationHistory');
+                return;
+            }
+
             setUnreadNotifications(prev => prev + 1);
+
             Alert.alert(
-                remoteMessage.notification?.title || '📍 New Offer!',
-                remoteMessage.notification?.body || 'You have a new notification.',
+                title,
+                message,
                 [
                     { text: 'Dismiss', style: 'cancel' },
-                    { text: 'View', onPress: () => { setUnreadNotifications(0); navigation.navigate('NotificationHistory'); } },
+                    {
+                        text: 'View',
+                        onPress: async () => {
+                            setUnreadNotifications(0);
+                            navigation.navigate('NotificationHistory');
+
+                            if (stored.campaignId != null) {
+                                try {
+                                    await APIService.post('/api/v1/notification-click', {
+                                        campaign_id: stored.campaignId,
+                                    });
+                                    await NotificationStore.markClicked(stored.id);
+                                } catch (e) {
+                                    // eslint-disable-next-line no-console
+                                    console.log('[MapScreen] Failed to send notification-click for foreground view', e);
+                                }
+                            }
+
+                            await NotificationStore.markAsRead(stored.id);
+                        },
+                    },
                 ],
             );
+        };
+
+        const unsubscribeForeground = FCMService.subscribeForeground(async remoteMessage => {
+            await handleRemoteMessage(remoteMessage, { openedFromNotification: false });
         });
 
-        const unsubscribeBackground = FCMService.subscribeBackgroundOpen(() => {
-            setUnreadNotifications(0);
-            navigation.navigate('NotificationHistory');
+        const unsubscribeBackground = FCMService.subscribeBackgroundOpen(async remoteMessage => {
+            await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
         });
 
-        FCMService.checkInitialNotification(() => {
-            setUnreadNotifications(0);
-            navigation.navigate('NotificationHistory');
+        FCMService.checkInitialNotification(async remoteMessage => {
+            await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
         });
 
         return () => { unsubscribeForeground(); unsubscribeBackground(); };
