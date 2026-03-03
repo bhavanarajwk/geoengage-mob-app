@@ -1,4 +1,5 @@
 import messaging from '@react-native-firebase/messaging';
+import { Platform, PermissionsAndroid } from 'react-native';
 import APIService from './APIService';
 
 const FCMService = {
@@ -19,6 +20,22 @@ const FCMService = {
      * @returns {Promise<string|null>} FCM token or null if permission denied
      */
     async requestPermissionAndGetToken() {
+        // On Android 13+ we must explicitly request the POST_NOTIFICATIONS runtime permission.
+        if (Platform.OS === 'android' && Platform.Version >= 33) {
+            const permission = PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS;
+            const alreadyGranted = await PermissionsAndroid.check(permission);
+
+            if (!alreadyGranted) {
+                const result = await PermissionsAndroid.request(permission);
+                const androidGranted = result === PermissionsAndroid.RESULTS.GRANTED;
+
+                if (!androidGranted) {
+
+                    return null;
+                }
+            }
+        }
+
         const authStatus = await messaging().requestPermission();
         const granted =
             authStatus === messaging.AuthorizationStatus.AUTHORIZED ||

@@ -27,6 +27,11 @@ import { latLngToScreen } from '../utils/coordinateConverter';
 const floorPlanImage = require('../../assets/floorplan.png');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// IndoorAtlas region types (from IARegion / native module). We only send events for floor and POI zones, not building (venue).
+const REGION_TYPE_VENUE = 2;       // Building — do not trigger event or zone UI
+const REGION_TYPE_FLOOR_PLAN = 1;  // Floor — send event + zone UI
+const REGION_TYPE_POI = 99;        // Zone within floor (Pantry, Meeting Room, etc.) — send event + zone UI
+
 export default function MapScreen({ navigation }) {
     const user = auth().currentUser;
 
@@ -187,11 +192,43 @@ export default function MapScreen({ navigation }) {
                 geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
                     if (!isActive) return;
 
+                    const regionType = region.type ?? -1;
+
+                    // Skip building (venue) — do not call event endpoint or show zone alert/banner
+                    if (regionType === REGION_TYPE_VENUE) {
+                        return;
+                    }
+
+                    // Only floor and POI zones trigger events and zone UI
+                    if (regionType !== REGION_TYPE_FLOOR_PLAN && regionType !== REGION_TYPE_POI) {
+                        return;
+                    }
+
+                    const eventType = regionType === REGION_TYPE_FLOOR_PLAN ? 'floor' : 'zone';
+
+                    // eslint-disable-next-line no-console
+                    console.log('[MapScreen] Geofence enter detected:', {
+                        zoneId: region.id,
+                        zoneName: region.name || 'Unknown Zone',
+                        floorLevel: currentFloorLevelRef.current,
+                        type: regionType,
+                    });
+
                     if (ZoneService.shouldNotify(region.id)) {
-                        Alert.alert('📍 Zone Entered', `You have entered ${region.name || 'a zone'}`, [{ text: 'OK', style: 'default' }], { cancelable: true });
+                        Alert.alert(
+                            '📍 Zone Entered',
+                            `You have entered ${region.name || 'a zone'}`,
+                            [{ text: 'OK', style: 'default' }],
+                            { cancelable: true },
+                        );
                         ZoneService.markNotified(region.id);
-                        ZoneService.saveZoneEntry({ zoneId: region.id, zoneName: region.name || 'Unknown Zone', timestamp: Date.now(), floorLevel: currentFloorLevelRef.current })
-                            .catch(() => {});
+                        ZoneService.saveZoneEntry({
+                            eventType,
+                            zoneId: region.id,
+                            zoneName: region.name || 'Unknown Zone',
+                            timestamp: Date.now(),
+                            floorLevel: currentFloorLevelRef.current,
+                        }).catch(() => {});
                     }
                     setCurrentZone({ id: region.id, name: region.name || 'Unknown Zone', type: region.type });
                     ZoneService.setCurrentZone({ id: region.id, name: region.name, type: region.type });
