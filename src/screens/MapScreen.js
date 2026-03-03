@@ -24,6 +24,7 @@ import NotificationStore from '../services/NotificationStore';
 import APIService from '../services/APIService';
 import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
+import InAppNotificationBanner from '../components/InAppNotificationBanner';
 import { latLngToScreen } from '../utils/coordinateConverter';
 
 const floorPlanImage = require('../../assets/floorplan.png');
@@ -48,12 +49,16 @@ export default function MapScreen({ navigation }) {
     const [loadingDismissed, setLoadingDismissed] = useState(false);
     const [currentZone, setCurrentZone] = useState(null);
     const [currentFloorLevel, setCurrentFloorLevel] = useState(null);
+    const [bannerQueue, setBannerQueue] = useState([]);
+    const [currentBanner, setCurrentBanner] = useState(null);
 
     const floorPlanRef = useRef(null);
     const imageLayoutRef = useRef(null);
     const hasLocationFixRef = useRef(false);
     const currentZoneRef = useRef(null);
     const currentFloorLevelRef = useRef(null);
+    const bannerAnim = useRef(new Animated.Value(0)).current;
+    const bannerTimerRef = useRef(null);
 
     // UI animation refs
     const zoneAnim = useRef(new Animated.Value(0)).current;
@@ -126,6 +131,109 @@ export default function MapScreen({ navigation }) {
         return { x: (pixelX * scaleX) + offsetX, y: (pixelY * scaleY) + offsetY };
     };
 
+    // ── Foreground notification banner helpers ───────────────────────────────
+    const showNextBanner = () => {
+        if (currentBanner || bannerQueue.length === 0) return;
+        const next = bannerQueue[0];
+        setCurrentBanner(next);
+
+        bannerAnim.setValue(0);
+        Animated.timing(bannerAnim, {
+            toValue: 1,
+            duration: 280,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const handleBannerDismiss = () => {
+        if (!currentBanner) return;
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+            bannerTimerRef.current = null;
+        }
+        Animated.timing(bannerAnim, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+        }).start(() => {
+            setBannerQueue(prev => prev.slice(1));
+            setCurrentBanner(null);
+        });
+    };
+
+    const handleBannerView = async () => {
+        if (!currentBanner) return;
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+            bannerTimerRef.current = null;
+        }
+
+        const banner = currentBanner;
+
+        Animated.timing(bannerAnim, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+        }).start(async () => {
+            setBannerQueue(prev => prev.slice(1));
+            setCurrentBanner(null);
+            setUnreadNotifications(0);
+            navigation.navigate('NotificationHistory');
+
+            if (banner.campaignId != null) {
+                try {
+                    await APIService.post('/api/v1/notification-click', {
+                        campaign_id: banner.campaignId,
+                    });
+                    await NotificationStore.markClicked(banner.id);
+                } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.log('[MapScreen] Failed to send notification-click for foreground view', e);
+                }
+            }
+
+            await NotificationStore.markAsRead(banner.id);
+        });
+    };
+
+    // Auto-dismiss banner after 5 seconds if user does nothing
+    useEffect(() => {
+        if (!currentBanner) {
+            if (bannerTimerRef.current) {
+                clearTimeout(bannerTimerRef.current);
+                bannerTimerRef.current = null;
+            }
+            return;
+        }
+
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+        }
+
+        bannerTimerRef.current = setTimeout(() => {
+            handleBannerDismiss();
+        }, 5000);
+
+        return () => {
+            if (bannerTimerRef.current) {
+                clearTimeout(bannerTimerRef.current);
+                bannerTimerRef.current = null;
+            }
+        };
+    }, [currentBanner]);
+
+    useEffect(() => {
+        if (!currentBanner && bannerQueue.length > 0) {
+            showNextBanner();
+        }
+    }, [bannerQueue, currentBanner]);
+
+    useEffect(() => () => {
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+        }
+    }, []);
+
     // ── FCM (foreground + background handling) ────────────────────────────────
     useEffect(() => {
         const handleRemoteMessage = async (remoteMessage, { openedFromNotification } = { openedFromNotification: false }) => {
@@ -159,35 +267,7 @@ export default function MapScreen({ navigation }) {
             }
 
             setUnreadNotifications(prev => prev + 1);
-
-            Alert.alert(
-                title,
-                message,
-                [
-                    { text: 'Dismiss', style: 'cancel' },
-                    {
-                        text: 'View',
-                        onPress: async () => {
-                            setUnreadNotifications(0);
-                            navigation.navigate('NotificationHistory');
-
-                            if (stored.campaignId != null) {
-                                try {
-                                    await APIService.post('/api/v1/notification-click', {
-                                        campaign_id: stored.campaignId,
-                                    });
-                                    await NotificationStore.markClicked(stored.id);
-                                } catch (e) {
-                                    // eslint-disable-next-line no-console
-                                    console.log('[MapScreen] Failed to send notification-click for foreground view', e);
-                                }
-                            }
-
-                            await NotificationStore.markAsRead(stored.id);
-                        },
-                    },
-                ],
-            );
+            setBannerQueue(prev => [...prev, stored]);
         };
 
         const unsubscribeForeground = FCMService.subscribeForeground(async remoteMessage => {
@@ -366,6 +446,15 @@ export default function MapScreen({ navigation }) {
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <StatusBar barStyle="light-content" backgroundColor="#0d1117" />
+
+            {currentBanner && (
+                <InAppNotificationBanner
+                    banner={currentBanner}
+                    animationValue={bannerAnim}
+                    onDismiss={handleBannerDismiss}
+                    onView={handleBannerView}
+                />
+            )}
 
             {/* ── Header ─────────────────────────────────────────────────── */}
             <Animated.View style={[styles.topBar, { opacity: headerFade }]}>

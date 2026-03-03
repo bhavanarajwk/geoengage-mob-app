@@ -114,7 +114,11 @@ export default function AuthScreen() {
             }
         } catch (error) {
 
-            if (error.code === 'SIGN_IN_CANCELLED') {
+            const code = (error && error.code && String(error.code).toLowerCase()) || '';
+            const msg = (error && error.message && String(error.message).toLowerCase()) || '';
+
+            // Treat any cancel-like error as a silent cancel from the user's perspective.
+            if (code.includes('cancel') || msg.includes('cancel')) {
                 // User cancelled — do nothing
             } else {
                 Alert.alert('Sign-In Failed', error.message || 'Something went wrong. Please try again.');
