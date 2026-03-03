@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import ZoneService from '../services/ZoneService';
+import NotificationStore from '../services/NotificationStore';
+import APIService from '../services/APIService';
 
 export default function NotificationHistoryScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
@@ -58,12 +59,12 @@ export default function NotificationHistoryScreen({ navigation }) {
         }).start();
     }, [selectionMode]);
 
-    // ─── DATA LOGIC (untouched) ───────────────────────────────────────────────
+    // ─── DATA LOGIC ───────────────────────────────────────────────────────────
 
     const loadHistory = async () => {
         try {
             setLoading(true);
-            const entries = await ZoneService.getZoneHistory(50, 0);
+            const entries = await NotificationStore.loadAll();
             setHistory(entries);
         } catch (error) {
 
@@ -90,7 +91,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await ZoneService.clearHistory();
+                            await NotificationStore.clearAll();
                             setHistory([]);
                             exitSelectionMode();
                         } catch (error) {
@@ -176,12 +177,25 @@ export default function NotificationHistoryScreen({ navigation }) {
                     text: 'Delete',
                     style: 'destructive',
                     onPress: () => {
-                        setHistory(prev =>
-                            prev.filter((item, index) => {
-                                const key = `${item.zoneId}-${item.timestamp}-${index}`;
-                                return !selectedIds.has(key);
-                            })
-                        );
+                        setHistory(prev => {
+                            const remaining = prev.filter((item) => !selectedIds.has(item.id));
+                            return remaining;
+                        });
+                        // Persist deletions
+                        (async () => {
+                            try {
+                                const current = await NotificationStore.getAll();
+                                const filtered = current.filter((item) => !selectedIds.has(item.id));
+                                // Replace cache by clearing then re-adding (simple approach)
+                                await NotificationStore.clearAll();
+                                for (const n of filtered) {
+                                    // eslint-disable-next-line no-await-in-loop
+                                    await NotificationStore.addNotification(n);
+                                }
+                            } catch (e) {
+
+                            }
+                        })();
                         exitSelectionMode();
                     },
                 },
@@ -190,25 +204,25 @@ export default function NotificationHistoryScreen({ navigation }) {
     };
 
     const handleDeleteSingle = (itemKey) => {
-        setHistory(prev =>
-            prev.filter((item, index) => {
-                const key = `${item.zoneId}-${item.timestamp}-${index}`;
-                return key !== itemKey;
-            })
-        );
+        setHistory(prev => prev.filter((item) => item.id !== itemKey));
+        (async () => {
+            try {
+                await NotificationStore.remove(itemKey);
+            } catch (e) {
+
+            }
+        })();
     };
 
     const handleSelectAll = () => {
-        const allKeys = history.map(
-            (item, index) => `${item.zoneId}-${item.timestamp}-${index}`
-        );
+        const allKeys = history.map((item) => item.id);
         setSelectedIds(new Set(allKeys));
     };
 
     // ─── RENDER ───────────────────────────────────────────────────────────────
 
     const renderHistoryItem = ({ item, index }) => {
-        const itemKey = `${item.zoneId}-${item.timestamp}-${index}`;
+        const itemKey = item.id;
         const isSelected = selectedIds.has(itemKey);
 
         return (
@@ -234,26 +248,31 @@ export default function NotificationHistoryScreen({ navigation }) {
 
                 {/* Content */}
                 <View style={styles.historyContent}>
-                    <Text style={styles.zoneName} numberOfLines={1}>
-                        {item.zoneName}
+                    <Text style={[styles.zoneName, !item.read && styles.zoneNameUnread]} numberOfLines={1}>
+                        {item.zoneName || item.title || 'GeoEngage'}
                     </Text>
+                    {!!item.message && (
+                        <Text style={styles.messageText} numberOfLines={2}>
+                            {item.message}
+                        </Text>
+                    )}
                     <View style={styles.historyMeta}>
-                        {item.floorLevel !== null && (
+                        {item.floor !== null && item.floor !== undefined && (
                             <View style={styles.floorBadge}>
                                 <Icon name="stairs" size={11} color="#7c8db0" />
-                                <Text style={styles.floorText}>Floor {item.floorLevel}</Text>
+                                <Text style={styles.floorText}>Floor {item.floor}</Text>
                             </View>
                         )}
-                        <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+                        <Text style={styles.timestamp}>{formatTimestamp(item.receivedAt)}</Text>
                     </View>
                 </View>
 
                 {/* Right: date or X button */}
                 {selectionMode ? (
-                    <Text style={styles.timeDetail}>{formatFullDate(item.timestamp)}</Text>
+                    <Text style={styles.timeDetail}>{formatFullDate(item.receivedAt)}</Text>
                 ) : (
                     <View style={styles.rightSection}>
-                        <Text style={styles.timeDetail}>{formatFullDate(item.timestamp)}</Text>
+                        <Text style={styles.timeDetail}>{formatFullDate(item.receivedAt)}</Text>
                         <TouchableOpacity
                             onPress={() => handleDeleteSingle(itemKey)}
                             style={styles.deleteBtn}
@@ -293,7 +312,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                 <Text style={styles.headerTitle}>
                     {selectionMode
                         ? `${selectedIds.size} Selected`
-                        : 'Zone History'}
+                        : 'Notification History'}
                 </Text>
 
                 <View style={styles.headerRight}>
@@ -332,7 +351,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                 <FlatList
                     data={history}
                     renderItem={renderHistoryItem}
-                    keyExtractor={(item, index) => `${item.zoneId}-${item.timestamp}-${index}`}
+                    keyExtractor={(item) => item.id}
                     contentContainerStyle={styles.listContent}
                     refreshControl={
                         <RefreshControl
@@ -532,6 +551,11 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#e2e8f0',
         marginBottom: 5,
+    },
+    messageText: {
+        fontSize: 13,
+        color: '#9ca3af',
+        marginBottom: 4,
     },
     historyMeta: {
         flexDirection: 'row',

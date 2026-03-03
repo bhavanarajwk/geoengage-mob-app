@@ -58,11 +58,12 @@ class ZoneService {
   }
 
   /**
-   * Save zone entry to persistent storage AND send to backend
-   * 
-   * @param {Object} entry - Zone entry data
-   * @param {string} entry.zoneId - Zone identifier
-   * @param {string} entry.zoneName - Zone display name
+   * Save floor/zone entry to persistent storage AND send to backend
+   *
+   * @param {Object} entry - Entry data
+   * @param {'floor'|'zone'} entry.eventType - Type of event ('floor' or 'zone')
+   * @param {string} entry.zoneId - Identifier (floor or zone UUID)
+   * @param {string} entry.zoneName - Display name (floor or zone)
    * @param {number} entry.timestamp - Entry timestamp
    * @param {number} entry.floorLevel - Floor level
    * @returns {Promise<void>}
@@ -79,11 +80,22 @@ class ZoneService {
           ? entry.floorLevel 
           : 1;
 
+        const eventType = entry.eventType === 'floor' ? 'floor' : 'zone';
+
+        // Backend expects all fields to be non-null, even for floor entries.
+        // For floors we treat the region as a "zone" representing that floor.
+        const zoneId = entry.zoneId || (eventType === 'floor' ? `floor-${floorId}` : 'unknown-zone');
+        const zoneName = entry.zoneName || (eventType === 'floor' ? `Floor ${floorId}` : 'Unknown Zone');
+
         const payload = {
-          zone_id: entry.zoneId,           // Indoor Atlas zone UUID (string)
-          zone_name: entry.zoneName,        // Human-readable zone name (string)
-          floor_id: floorId,                // Floor number (integer)
+          event_type: eventType,  // 'floor' or 'zone'
+          zone_id: zoneId,        // Floor or zone identifier (string, never null)
+          zone_name: zoneName,    // Display name (string, never null)
+          floor_id: floorId,      // Floor number (integer)
         };
+
+        // eslint-disable-next-line no-console
+        console.log('[ZoneService] Sending zone/floor event payload:', payload);
 
         const response = await APIService.post('/api/v1/event', payload);
 

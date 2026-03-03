@@ -66,7 +66,10 @@ export default function AuthScreen() {
         try {
             const authResult = await signInWithGoogle();
 
-            // Log everything Firebase returns
+            // eslint-disable-next-line no-console
+            console.log('[AuthScreen] Firebase user UID:', authResult.user?.uid);
+            // eslint-disable-next-line no-console
+            console.log('[AuthScreen] Firebase ID token:', authResult.firebaseIdToken);
 
             // CRITICAL: Wait for Firebase auth state to fully update
             // This ensures auth().currentUser is set before API calls
@@ -94,6 +97,9 @@ export default function AuthScreen() {
 
             const fcmToken = await FCMService.requestPermissionAndGetToken();
 
+            // eslint-disable-next-line no-console
+            console.log('[AuthScreen] FCM token:', fcmToken);
+
             if (fcmToken) {
 
                 try {
@@ -108,7 +114,11 @@ export default function AuthScreen() {
             }
         } catch (error) {
 
-            if (error.code === 'SIGN_IN_CANCELLED') {
+            const code = (error && error.code && String(error.code).toLowerCase()) || '';
+            const msg = (error && error.message && String(error.message).toLowerCase()) || '';
+
+            // Treat any cancel-like error as a silent cancel from the user's perspective.
+            if (code.includes('cancel') || msg.includes('cancel')) {
                 // User cancelled — do nothing
             } else {
                 Alert.alert('Sign-In Failed', error.message || 'Something went wrong. Please try again.');

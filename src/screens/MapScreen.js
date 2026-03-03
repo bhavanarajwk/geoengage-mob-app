@@ -20,12 +20,20 @@ import auth from '@react-native-firebase/auth';
 import FCMService from '../services/FCMService';
 import IndoorAtlasService from '../services/IndoorAtlasService';
 import ZoneService from '../services/ZoneService';
+import NotificationStore from '../services/NotificationStore';
+import APIService from '../services/APIService';
 import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
+import InAppNotificationBanner from '../components/InAppNotificationBanner';
 import { latLngToScreen } from '../utils/coordinateConverter';
 
 const floorPlanImage = require('../../assets/floorplan.png');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// IndoorAtlas region types (from IARegion / native module). We only send events for floor and POI zones, not building (venue).
+const REGION_TYPE_VENUE = 2;       // Building — do not trigger event or zone UI
+const REGION_TYPE_FLOOR_PLAN = 1;  // Floor — send event + zone UI
+const REGION_TYPE_POI = 99;        // Zone within floor (Pantry, Meeting Room, etc.) — send event + zone UI
 
 export default function MapScreen({ navigation }) {
     const user = auth().currentUser;
@@ -41,12 +49,16 @@ export default function MapScreen({ navigation }) {
     const [loadingDismissed, setLoadingDismissed] = useState(false);
     const [currentZone, setCurrentZone] = useState(null);
     const [currentFloorLevel, setCurrentFloorLevel] = useState(null);
+    const [bannerQueue, setBannerQueue] = useState([]);
+    const [currentBanner, setCurrentBanner] = useState(null);
 
     const floorPlanRef = useRef(null);
     const imageLayoutRef = useRef(null);
     const hasLocationFixRef = useRef(false);
     const currentZoneRef = useRef(null);
     const currentFloorLevelRef = useRef(null);
+    const bannerAnim = useRef(new Animated.Value(0)).current;
+    const bannerTimerRef = useRef(null);
 
     // UI animation refs
     const zoneAnim = useRef(new Animated.Value(0)).current;
@@ -119,28 +131,159 @@ export default function MapScreen({ navigation }) {
         return { x: (pixelX * scaleX) + offsetX, y: (pixelY * scaleY) + offsetY };
     };
 
-    // ── FCM (unchanged) ───────────────────────────────────────────────────────
+    // ── Foreground notification banner helpers ───────────────────────────────
+    const showNextBanner = () => {
+        if (currentBanner || bannerQueue.length === 0) return;
+        const next = bannerQueue[0];
+        setCurrentBanner(next);
+
+        bannerAnim.setValue(0);
+        Animated.timing(bannerAnim, {
+            toValue: 1,
+            duration: 280,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const handleBannerDismiss = () => {
+        if (!currentBanner) return;
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+            bannerTimerRef.current = null;
+        }
+        Animated.timing(bannerAnim, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+        }).start(() => {
+            setBannerQueue(prev => prev.slice(1));
+            setCurrentBanner(null);
+        });
+    };
+
+    const handleBannerView = async () => {
+        if (!currentBanner) return;
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+            bannerTimerRef.current = null;
+        }
+
+        const banner = currentBanner;
+
+        Animated.timing(bannerAnim, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+        }).start(async () => {
+            setBannerQueue(prev => prev.slice(1));
+            setCurrentBanner(null);
+            setUnreadNotifications(0);
+            navigation.navigate('NotificationHistory');
+
+            if (banner.campaignId != null) {
+                try {
+                    await APIService.post('/api/v1/notification-click', {
+                        campaign_id: banner.campaignId,
+                    });
+                    await NotificationStore.markClicked(banner.id);
+                } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.log('[MapScreen] Failed to send notification-click for foreground view', e);
+                }
+            }
+
+            await NotificationStore.markAsRead(banner.id);
+        });
+    };
+
+    // Auto-dismiss banner after 5 seconds if user does nothing
     useEffect(() => {
-        const unsubscribeForeground = FCMService.subscribeForeground(remoteMessage => {
+        if (!currentBanner) {
+            if (bannerTimerRef.current) {
+                clearTimeout(bannerTimerRef.current);
+                bannerTimerRef.current = null;
+            }
+            return;
+        }
+
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+        }
+
+        bannerTimerRef.current = setTimeout(() => {
+            handleBannerDismiss();
+        }, 5000);
+
+        return () => {
+            if (bannerTimerRef.current) {
+                clearTimeout(bannerTimerRef.current);
+                bannerTimerRef.current = null;
+            }
+        };
+    }, [currentBanner]);
+
+    useEffect(() => {
+        if (!currentBanner && bannerQueue.length > 0) {
+            showNextBanner();
+        }
+    }, [bannerQueue, currentBanner]);
+
+    useEffect(() => () => {
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current);
+        }
+    }, []);
+
+    // ── FCM (foreground + background handling) ────────────────────────────────
+    useEffect(() => {
+        const handleRemoteMessage = async (remoteMessage, { openedFromNotification } = { openedFromNotification: false }) => {
+            if (!remoteMessage) return;
+
+            const notif = remoteMessage.notification || {};
+            const data = remoteMessage.data || {};
+
+            const title = notif.title || 'GeoEngage';
+            const message = notif.body || '';
+
+            const campaignId = data.campaign_id ? parseInt(data.campaign_id, 10) : null;
+            const zoneName = data.zone_name || null;
+            const floor = data.floor_id ? parseInt(data.floor_id, 10) : null;
+            const notificationId = data.notification_id || null;
+
+            const stored = await NotificationStore.addNotification({
+                id: remoteMessage.messageId,
+                campaignId,
+                notificationId,
+                zoneName,
+                floor,
+                title,
+                message,
+                receivedAt: Date.now(),
+                read: !!openedFromNotification,
+                clicked: !!openedFromNotification,
+                messageId: remoteMessage.messageId,
+            });
+
+            if (openedFromNotification) {
+                setUnreadNotifications(0);
+                navigation.navigate('NotificationHistory');
+                return;
+            }
+
             setUnreadNotifications(prev => prev + 1);
-            Alert.alert(
-                remoteMessage.notification?.title || '📍 New Offer!',
-                remoteMessage.notification?.body || 'You have a new notification.',
-                [
-                    { text: 'Dismiss', style: 'cancel' },
-                    { text: 'View', onPress: () => { setUnreadNotifications(0); navigation.navigate('NotificationHistory'); } },
-                ],
-            );
+            setBannerQueue(prev => [...prev, stored]);
+        };
+
+        const unsubscribeForeground = FCMService.subscribeForeground(async remoteMessage => {
+            await handleRemoteMessage(remoteMessage, { openedFromNotification: false });
         });
 
-        const unsubscribeBackground = FCMService.subscribeBackgroundOpen(() => {
-            setUnreadNotifications(0);
-            navigation.navigate('NotificationHistory');
+        const unsubscribeBackground = FCMService.subscribeBackgroundOpen(async remoteMessage => {
+            await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
         });
 
-        FCMService.checkInitialNotification(() => {
-            setUnreadNotifications(0);
-            navigation.navigate('NotificationHistory');
+        FCMService.checkInitialNotification(async remoteMessage => {
+            await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
         });
 
         return () => { unsubscribeForeground(); unsubscribeBackground(); };
@@ -187,11 +330,37 @@ export default function MapScreen({ navigation }) {
                 geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
                     if (!isActive) return;
 
+                    const regionType = region.type ?? -1;
+
+                    // Skip building (venue) — do not call event endpoint or show zone alert/banner
+                    if (regionType === REGION_TYPE_VENUE) {
+                        return;
+                    }
+
+                    // Only floor and POI zones trigger events and zone UI
+                    if (regionType !== REGION_TYPE_FLOOR_PLAN && regionType !== REGION_TYPE_POI) {
+                        return;
+                    }
+
+                    const eventType = regionType === REGION_TYPE_FLOOR_PLAN ? 'floor' : 'zone';
+
+                    // eslint-disable-next-line no-console
+                    console.log('[MapScreen] Geofence enter detected:', {
+                        zoneId: region.id,
+                        zoneName: region.name || 'Unknown Zone',
+                        floorLevel: currentFloorLevelRef.current,
+                        type: regionType,
+                    });
+
                     if (ZoneService.shouldNotify(region.id)) {
-                        Alert.alert('📍 Zone Entered', `You have entered ${region.name || 'a zone'}`, [{ text: 'OK', style: 'default' }], { cancelable: true });
                         ZoneService.markNotified(region.id);
-                        ZoneService.saveZoneEntry({ zoneId: region.id, zoneName: region.name || 'Unknown Zone', timestamp: Date.now(), floorLevel: currentFloorLevelRef.current })
-                            .catch(() => {});
+                        ZoneService.saveZoneEntry({
+                            eventType,
+                            zoneId: region.id,
+                            zoneName: region.name || 'Unknown Zone',
+                            timestamp: Date.now(),
+                            floorLevel: currentFloorLevelRef.current,
+                        }).catch(() => {});
                     }
                     setCurrentZone({ id: region.id, name: region.name || 'Unknown Zone', type: region.type });
                     ZoneService.setCurrentZone({ id: region.id, name: region.name, type: region.type });
@@ -239,6 +408,23 @@ export default function MapScreen({ navigation }) {
         };
     }, []);
 
+    const handleSimulateConferenceZone = async () => {
+        try {
+            await ZoneService.saveZoneEntry({
+                eventType: 'zone',
+                zoneId: 'cebf6bb0-126e-11f1-badb-c35cc3d92253',
+                zoneName: 'Conference Room',
+                timestamp: Date.now(),
+                floorLevel: 2,
+            });
+            // eslint-disable-next-line no-console
+            console.log('[MapScreen] Simulated Conference Room zone event sent');
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.log('[MapScreen] Failed to simulate Conference Room event', e);
+        }
+    };
+
     // ── Status chips ──────────────────────────────────────────────────────────
     const statusChips = [
         {
@@ -258,6 +444,15 @@ export default function MapScreen({ navigation }) {
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <StatusBar barStyle="light-content" backgroundColor="#0d1117" />
+
+            {currentBanner && (
+                <InAppNotificationBanner
+                    banner={currentBanner}
+                    animationValue={bannerAnim}
+                    onDismiss={handleBannerDismiss}
+                    onView={handleBannerView}
+                />
+            )}
 
             {/* ── Header ─────────────────────────────────────────────────── */}
             <Animated.View style={[styles.topBar, { opacity: headerFade }]}>
@@ -403,6 +598,16 @@ export default function MapScreen({ navigation }) {
                     </View>
                 ))}
             </View>
+
+            {__DEV__ && (
+                <TouchableOpacity
+                    style={styles.debugButton}
+                    onPress={handleSimulateConferenceZone}
+                    activeOpacity={0.85}
+                >
+                    <Text style={styles.debugButtonText}>Simulate Conference Room Event</Text>
+                </TouchableOpacity>
+            )}
         </SafeAreaView>
     );
 }
@@ -665,6 +870,23 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     statusTextActive: {
+        fontSize: 12,
         color: '#22c55e',
+        fontWeight: '500',
     },
-});
+    debugButton: {
+        marginTop: 10,
+        alignSelf: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 16,
+        backgroundColor: '#1e293b',
+        borderWidth: 1,
+        borderColor: '#334155',
+    },
+    debugButtonText: {
+        fontSize: 12,
+        color: '#e2e8f0',
+        fontWeight: '500',
+    },
+}); 
