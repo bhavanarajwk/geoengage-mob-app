@@ -276,6 +276,23 @@ export default function MapScreen({ navigation }) {
         };
     }, []);
 
+    const handleSimulateConferenceZone = async () => {
+        try {
+            await ZoneService.saveZoneEntry({
+                eventType: 'zone',
+                zoneId: 'cebf6bb0-126e-11f1-badb-c35cc3d92253',
+                zoneName: 'Conference Room',
+                timestamp: Date.now(),
+                floorLevel: 2,
+            });
+            // eslint-disable-next-line no-console
+            console.log('[MapScreen] Simulated Conference Room zone event sent');
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.log('[MapScreen] Failed to simulate Conference Room event', e);
+        }
+    };
+
     // ── Status chips ──────────────────────────────────────────────────────────
     const statusChips = [
         {
@@ -440,6 +457,16 @@ export default function MapScreen({ navigation }) {
                     </View>
                 ))}
             </View>
+
+            {__DEV__ && (
+                <TouchableOpacity
+                    style={styles.debugButton}
+                    onPress={handleSimulateConferenceZone}
+                    activeOpacity={0.85}
+                >
+                    <Text style={styles.debugButtonText}>Simulate Conference Room Event</Text>
+                </TouchableOpacity>
+            )}
         </SafeAreaView>
     );
 }
@@ -702,6 +729,23 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     statusTextActive: {
+        fontSize: 12,
         color: '#22c55e',
+        fontWeight: '500',
     },
-});
+    debugButton: {
+        marginTop: 10,
+        alignSelf: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 16,
+        backgroundColor: '#1e293b',
+        borderWidth: 1,
+        borderColor: '#334155',
+    },
+    debugButtonText: {
+        fontSize: 12,
+        color: '#e2e8f0',
+        fontWeight: '500',
+    },
+}); 
