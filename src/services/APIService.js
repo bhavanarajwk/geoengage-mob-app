@@ -4,12 +4,39 @@ import { API_BASE_URL } from '@env';
 
 // Backend URL loaded from .env file
 
+/**
+ * Decode JWT payload (without verification)
+ * Used for debugging only - to see token claims
+ */
+const decodeJWT = (token) => {
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return null;
+
+        const payload = parts[1];
+        // React Native compatible base64 decode
+        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+            atob(base64)
+                .split('')
+                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+        );
+        return JSON.parse(jsonPayload);
+    } catch (err) {
+
+        return null;
+    }
+};
+
 const APIService = axios.create({
     baseURL: API_BASE_URL,
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true', // Skip ngrok warning page
+        'Accept': 'application/json',
+        // DevTunnel compatibility (VS Code port forwarding)
+        'ngrok-skip-browser-warning': 'true',
     },
 });
 
@@ -24,14 +51,22 @@ APIService.interceptors.request.use(
             try {
                 const token = await user.getIdToken(true); // force refresh if expired
                 config.headers.Authorization = `Bearer ${token}`;
-                console.log(`[API] 🔐 JWT attached to ${config.method.toUpperCase()} ${config.url}`);
-                console.log(`[API] 🔑 Token preview: ${token.substring(0, 30)}...${token.substring(token.length - 10)}`);
-                console.log(`[API] 👤 User: ${user.email} (UID: ${user.uid})`);
+
+                // Decode JWT to see claims
+                const decoded = decodeJWT(token);
+                if (decoded) {
+
+                }
+
+                if (config.data) {
+
+                }
+
             } catch (err) {
-                console.warn('[API] ❌ Failed to get Firebase ID token:', err.message);
+
             }
         } else {
-            console.warn('[API] ⚠️ No authenticated user - request sent without JWT');
+
         }
         return config;
     },
@@ -42,15 +77,18 @@ APIService.interceptors.request.use(
  * Response interceptor: log errors consistently.
  */
 APIService.interceptors.response.use(
-    response => response,
+    response => {
+
+        return response;
+    },
     error => {
         const status = error.response?.status;
         const message = error.response?.data?.error || error.response?.data?.detail || error.message;
-        console.error(`[API] ❌ Error ${status}:`, message);
+
         if (status === 401) {
-            console.error('[API] 🚫 Authentication failed - JWT may be invalid or expired');
-            console.error('[API] 📋 Response data:', JSON.stringify(error.response?.data, null, 2));
+
         }
+
         return Promise.reject(error);
     },
 );

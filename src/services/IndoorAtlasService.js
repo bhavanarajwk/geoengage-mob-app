@@ -18,7 +18,7 @@ class IndoorAtlasService {
    */
   async initialize() {
     if (this.isInitialized) {
-      console.log('[IndoorAtlas] Already initialized');
+
       return true;
     }
 
@@ -26,19 +26,17 @@ class IndoorAtlasService {
       // Validate configuration
       validateConfig();
 
-      console.log('[IndoorAtlas] Initializing SDK...');
-
       await IndoorAtlas.initialize(
         INDOOR_ATLAS_CONFIG.apiKey,
         INDOOR_ATLAS_CONFIG.apiSecret
       );
 
       this.isInitialized = true;
-      console.log('[IndoorAtlas] ✅ SDK initialized successfully');
+
       return true;
 
     } catch (error) {
-      console.error('[IndoorAtlas] ❌ Initialization failed:', error);
+
       throw error;
     }
   }
@@ -53,26 +51,25 @@ class IndoorAtlasService {
     }
 
     if (this.isPositioning) {
-      console.log('[IndoorAtlas] Positioning already started');
+
       return true;
     }
 
     try {
-      console.log('[IndoorAtlas] Starting positioning...');
 
       const success = await IndoorAtlas.startPositioning();
 
       if (success) {
         this.isPositioning = true;
-        console.log('[IndoorAtlas] ✅ Positioning started');
+
       } else {
-        console.warn('[IndoorAtlas] ⚠️ Positioning failed to start');
+
       }
 
       return success;
 
     } catch (error) {
-      console.error('[IndoorAtlas] ❌ Failed to start positioning:', error);
+
       throw error;
     }
   }
@@ -83,24 +80,23 @@ class IndoorAtlasService {
    */
   async stopPositioning() {
     if (!this.isPositioning) {
-      console.log('[IndoorAtlas] Positioning not active');
+
       return true;
     }
 
     try {
-      console.log('[IndoorAtlas] Stopping positioning...');
 
       const success = await IndoorAtlas.stopPositioning();
 
       if (success) {
         this.isPositioning = false;
-        console.log('[IndoorAtlas] ✅ Positioning stopped');
+
       }
 
       return success;
 
     } catch (error) {
-      console.error('[IndoorAtlas] ❌ Failed to stop positioning:', error);
+
       throw error;
     }
   }
@@ -115,21 +111,13 @@ class IndoorAtlasService {
     }
 
     try {
-      console.log('[IndoorAtlas] Requesting current location...');
 
       const location = await IndoorAtlas.getCurrentLocation();
-
-      console.log('[IndoorAtlas] ✅ Current location:', {
-        lat: location.latitude,
-        lng: location.longitude,
-        floor: location.floorLevel,
-        accuracy: location.accuracy,
-      });
 
       return location;
 
     } catch (error) {
-      console.error('[IndoorAtlas] ❌ Failed to get location:', error);
+
       throw error;
     }
   }
@@ -141,12 +129,7 @@ class IndoorAtlasService {
    */
   onLocationChanged(callback) {
     const subscription = IndoorAtlas.onLocationChanged((location) => {
-      console.log('[IndoorAtlas] 📍 Location update:', {
-        lat: location.latitude?.toFixed(6),
-        lng: location.longitude?.toFixed(6),
-        floor: location.floorLevel,
-        accuracy: location.accuracy?.toFixed(2),
-      });
+      // Location updates are too frequent to log
       callback(location);
     });
 
@@ -161,7 +144,7 @@ class IndoorAtlasService {
    */
   onGeofenceEnter(callback) {
     const subscription = IndoorAtlas.onGeofenceEnter((region) => {
-      console.log('[IndoorAtlas] 🚪 Entered zone:', region.name || region.id);
+
       callback(region);
     });
 
@@ -176,7 +159,7 @@ class IndoorAtlasService {
    */
   onGeofenceExit(callback) {
     const subscription = IndoorAtlas.onGeofenceExit((region) => {
-      console.log('[IndoorAtlas] 🚶 Exited zone:', region.name || region.id);
+
       callback(region);
     });
 
@@ -191,7 +174,7 @@ class IndoorAtlasService {
    */
   onStatusChanged(callback) {
     const subscription = IndoorAtlas.onStatusChanged((status) => {
-      console.log('[IndoorAtlas] 📡 Status:', status.statusText || status.status);
+
       callback(status);
     });
 
@@ -207,11 +190,6 @@ class IndoorAtlasService {
   onFloorPlanChanged(callback) {
     const subscription = IndoorAtlas.onFloorPlanChanged((floorPlan) => {
 
-      console.log('[IndoorAtlas] 🗺️ Floor plan changed:');
-      console.log('  - Name:', floorPlan.name);
-      console.log('  - ID:', floorPlan.id);
-      console.log('  - Floor Level:', floorPlan.floorLevel);
-      console.log('  - URL:', floorPlan.url);
       callback(floorPlan);
     });
 
@@ -223,7 +201,6 @@ class IndoorAtlasService {
    * Remove all event subscriptions and cleanup
    */
   cleanup() {
-    console.log('[IndoorAtlas] Cleaning up subscriptions...');
 
     // Remove all subscriptions
     this.subscriptions.forEach(sub => {
@@ -234,14 +211,12 @@ class IndoorAtlasService {
 
     this.subscriptions = [];
 
-    console.log('[IndoorAtlas] ✅ Cleanup complete');
   }
 
   /**
    * Full shutdown - stop positioning and cleanup
    */
   async shutdown() {
-    console.log('[IndoorAtlas] Shutting down...');
 
     if (this.isPositioning) {
       await this.stopPositioning();
@@ -250,7 +225,6 @@ class IndoorAtlasService {
     this.cleanup();
     this.isInitialized = false;
 
-    console.log('[IndoorAtlas] ✅ Shutdown complete');
   }
 }
 
