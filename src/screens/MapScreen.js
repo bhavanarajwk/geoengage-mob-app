@@ -150,10 +150,6 @@ export default function MapScreen({ navigation }) {
 
     const handleBannerDismiss = () => {
         if (!currentBanner) return;
-        if (bannerTimerRef.current) {
-            clearTimeout(bannerTimerRef.current);
-            bannerTimerRef.current = null;
-        }
         Animated.timing(bannerAnim, {
             toValue: 0,
             duration: 220,
@@ -166,10 +162,6 @@ export default function MapScreen({ navigation }) {
 
     const handleBannerView = async () => {
         if (!currentBanner) return;
-        if (bannerTimerRef.current) {
-            clearTimeout(bannerTimerRef.current);
-            bannerTimerRef.current = null;
-        }
 
         const banner = currentBanner;
 
@@ -202,21 +194,20 @@ export default function MapScreen({ navigation }) {
     // Auto-dismiss banner after 5 seconds if user does nothing
     useEffect(() => {
         if (!currentBanner) {
-            if (bannerTimerRef.current) {
-                clearTimeout(bannerTimerRef.current);
-                bannerTimerRef.current = null;
-            }
             return;
         }
 
+        // Clear any existing timer
         if (bannerTimerRef.current) {
             clearTimeout(bannerTimerRef.current);
         }
 
+        // Set new timer for auto-dismiss
         bannerTimerRef.current = setTimeout(() => {
             handleBannerDismiss();
         }, 5000);
 
+        // Cleanup function: clear timer on unmount or banner change
         return () => {
             if (bannerTimerRef.current) {
                 clearTimeout(bannerTimerRef.current);
@@ -230,12 +221,6 @@ export default function MapScreen({ navigation }) {
             showNextBanner();
         }
     }, [bannerQueue, currentBanner]);
-
-    useEffect(() => () => {
-        if (bannerTimerRef.current) {
-            clearTimeout(bannerTimerRef.current);
-        }
-    }, []);
 
     // ── FCM (foreground + background handling) ────────────────────────────────
     useEffect(() => {
@@ -285,9 +270,16 @@ export default function MapScreen({ navigation }) {
             await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
         });
 
-        FCMService.checkInitialNotification(async remoteMessage => {
-            await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
-        });
+        // Check if app was opened from notification in killed state
+        (async () => {
+            try {
+                await FCMService.checkInitialNotification(async remoteMessage => {
+                    await handleRemoteMessage(remoteMessage, { openedFromNotification: true });
+                });
+            } catch (error) {
+                console.error('[MapScreen] Error checking initial notification:', error);
+            }
+        })();
 
         return () => { unsubscribeForeground(); unsubscribeBackground(); };
     }, [navigation]);
@@ -458,7 +450,9 @@ export default function MapScreen({ navigation }) {
             isActive = false;
             [locationUnsubscribe, statusUnsubscribe, floorPlanUnsubscribe, geofenceEnterUnsubscribe, geofenceExitUnsubscribe]
                 .forEach(u => u?.remove?.());
-            IndoorAtlasService.stopPositioning().catch(() => {});
+            IndoorAtlasService.stopPositioning().catch((error) => {
+                console.error('[MapScreen] Error stopping IndoorAtlas positioning during cleanup:', error);
+            });
         };
     }, []);
 
@@ -686,6 +680,7 @@ export default function MapScreen({ navigation }) {
                     <Text style={styles.debugButtonText}>Simulate Conference Room Event</Text>
                 </TouchableOpacity>
             )}
+            
         </SafeAreaView>
     );
 }
