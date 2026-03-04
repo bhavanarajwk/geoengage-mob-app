@@ -4,7 +4,7 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
-    Alert,
+    Linking,
     StatusBar,
     Dimensions,
     PermissionsAndroid,
@@ -27,6 +27,7 @@ import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
 import InAppNotificationBanner from '../components/InAppNotificationBanner';
 import IndoorMapView from '../components/IndoorMapView';
+import { useCustomAlert } from '../components/CustomAlert';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // IndoorAtlas region types (from IARegion / native module). We only send events for floor and POI zones, not building (venue).
@@ -52,6 +53,7 @@ export default function MapScreen({ navigation }) {
     const [currentBanner, setCurrentBanner] = useState(null);
     const [isOnline, setIsOnline] = useState(true);
     const [accuracy, setAccuracy] = useState(5);
+    const alert = useCustomAlert();
 
     const floorPlanRef = useRef(null);
     const hasLocationFixRef = useRef(false);
@@ -364,7 +366,20 @@ export default function MapScreen({ navigation }) {
                 const coarseGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
 
                 if (fineGranted || coarseGranted) return true;
-                Alert.alert('Location Permission Required', 'Indoor positioning requires location access. Please grant location permissions in Settings.', [{ text: 'OK' }]);
+                alert.show(
+                    'Location Permission Required',
+                    'Indoor positioning needs location access to show your position on the floor plan and detect when you enter zones.',
+                    [
+                        { text: 'Cancel', style: 'secondary' },
+                        {
+                            text: 'Open Settings',
+                            style: 'primary',
+                            onPress: () => {
+                                Linking.openSettings();
+                            }
+                        }
+                    ]
+                );
                 return false;
             } catch (err) {  return false; }
         };
@@ -462,7 +477,11 @@ export default function MapScreen({ navigation }) {
             } catch (error) {
 
                 setIsInitializing(false);
-                Alert.alert('Indoor Positioning Error', 'Failed to initialize indoor positioning. Some features may not work.', [{ text: 'OK' }]);
+                alert.show(
+                    'Indoor Positioning Error',
+                    'Failed to initialize indoor positioning. This may be due to:\n\n• Location services disabled\n• Indoor Atlas SDK issue\n• Network connectivity\n\nTry restarting the app or checking your location settings.',
+                    [{ text: 'OK', style: 'primary' }]
+                );
             }
         };
 
@@ -742,6 +761,9 @@ export default function MapScreen({ navigation }) {
                     <Text style={styles.debugButtonText}>Simulate Conference Room Event</Text>
                 </TouchableOpacity>
             )}
+
+            {/* Custom Alert Component */}
+            <alert.AlertComponent />
             
         </SafeAreaView>
     );
