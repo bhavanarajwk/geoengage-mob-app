@@ -4,7 +4,6 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
-    Alert,
     ActivityIndicator,
     StatusBar,
     Animated,
@@ -13,14 +12,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import auth from '@react-native-firebase/auth';
+import { statusCodes } from '@react-native-google-signin/google-signin';
 import { signInWithGoogle } from '../services/AuthService';
 import FCMService from '../services/FCMService';
 import APIService from '../services/APIService';
+import { useCustomAlert } from '../components/CustomAlert';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
 export default function AuthScreen() {
     const [loading, setLoading] = useState(false);
+    const alert = useCustomAlert();
 
     // Staggered animations
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -87,10 +89,10 @@ export default function AuthScreen() {
                     if (currentUser) {
                         console.log('[AuthScreen] Timeout reached - user is authenticated');
                     } else {
-                        console.warn('[AuthScreen] Timeout reached - auth state not ready');
+                        console.warn('[AuthScreen] Timeout reached - auth state not ready after 5s');
                     }
                     resolve();
-                }, 2000);
+                }, 5000);
             });
 
             // Request FCM permission and get token
@@ -107,8 +109,7 @@ export default function AuthScreen() {
                     console.log('[AuthScreen] Device registered successfully');
                 } else {
                     console.error('[AuthScreen] Device registration failed after retries');
-                    // Don't block sign-in, but warn user
-                    Alert.alert(
+                    alert.show(
                         'Notification Setup Issue',
                         'You are signed in, but notifications may not work properly. Please check your connection.',
                         [{ text: 'OK' }]
@@ -122,16 +123,54 @@ export default function AuthScreen() {
         } catch (error) {
             console.error('[AuthScreen] Sign-in error:', error);
 
-            const code = (error && error.code && String(error.code).toLowerCase()) || '';
-            const msg = (error && error.message && String(error.message).toLowerCase()) || '';
+            // Use proper Google Sign-In status codes instead of string matching
+            const errorCode = error?.code;
+            const errorMessage = error?.message || '';
 
-            // Treat any cancel-like error as a silent cancel from the user's perspective.
-            if (code.includes('cancel') || msg.includes('cancel')) {
-                console.log('[AuthScreen] User cancelled sign-in');
-                // User cancelled — do nothing
-            } else {
-                Alert.alert('Sign-In Failed', error.message || 'Something went wrong. Please try again.');
+            // Handle user cancellation silently (proper locale-independent detection)
+            if (errorCode === statusCodes.SIGN_IN_CANCELLED) {
+                console.log('[AuthScreen] User cancelled sign-in (status code)');
+                return; // Silent dismiss
             }
+
+            // Also handle edge case where Google Sign-In returns without idToken (likely user cancelled)
+            if (errorMessage.includes('no idToken returned')) {
+                console.log('[AuthScreen] User cancelled sign-in (no idToken)');
+                return; // Silent dismiss
+            }
+
+            // Provide context-specific error messages
+            let title = 'Sign-In Failed';
+            let message = '';
+
+            switch (errorCode) {
+                case statusCodes.IN_PROGRESS:
+                    console.warn('[AuthScreen] Sign-in already in progress');
+                    message = 'Sign-in already in progress. Please wait.';
+                    break;
+
+                case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+                    message = 'Google Play Services is not available or outdated. Please update Google Play Services and try again.';
+                    break;
+
+                default:
+                    // Check for network-related errors
+                    const lowerMessage = errorMessage.toLowerCase();
+
+                    if (lowerMessage.includes('network') || lowerMessage.includes('connection') || lowerMessage.includes('timeout')) {
+                        title = 'Network Error';
+                        message = 'Unable to connect. Please check your internet connection and try again.';
+                    } else if (lowerMessage.includes('auth') || lowerMessage.includes('credential')) {
+                        title = 'Authentication Error';
+                        message = 'Unable to authenticate with Google. Please try again.';
+                    } else {
+                        // Generic fallback with user-friendly message
+                        message = 'Unable to sign in at this time. Please try again.';
+                    }
+                    break;
+            }
+
+            alert.show(title, message);
         } finally {
             setLoading(false);
         }
@@ -220,6 +259,9 @@ export default function AuthScreen() {
                     <Text style={styles.linkText}>Privacy Policy</Text>
                 </Animated.Text>
             </Animated.View>
+
+            {/* Custom Alert */}
+            <alert.AlertComponent />
         </SafeAreaView>
     );
 }

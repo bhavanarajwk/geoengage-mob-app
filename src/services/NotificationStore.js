@@ -38,21 +38,37 @@ const NotificationStore = {
     /**
      * Load notifications for the current user from AsyncStorage.
      * Returns a shallow copy of the in-memory list.
+     * @throws {Error} If no authenticated user is available
      */
     async loadAll() {
         const key = this.getStorageKey();
         if (!key) {
-            cache = [];
-            return [];
+            console.error('[NotificationStore] No authenticated user - cannot load notifications');
+            throw new Error('No authenticated user. Please sign in to view notifications.');
         }
 
         try {
             const data = await AsyncStorage.getItem(key);
-            cache = data ? JSON.parse(data) : [];
+            
+            if (!data) {
+                console.log('[NotificationStore] No stored notifications found (empty)');
+                cache = [];
+                return [];
+            }
+
+            try {
+                cache = JSON.parse(data);
+                console.log(`[NotificationStore] Loaded ${cache.length} notifications`);
+            } catch (parseError) {
+                console.error('[NotificationStore] Corrupted notification data, clearing:', parseError.message);
+                // Clear corrupted data
+                cache = [];
+                await AsyncStorage.removeItem(key);
+            }
         } catch (e) {
-            // eslint-disable-next-line no-console
-            console.log('[NotificationStore] Failed to load notifications', e);
+            console.error('[NotificationStore] Failed to load notifications:', e.message);
             cache = [];
+            throw new Error(`Failed to load notifications: ${e.message}`);
         }
 
         this.applyRetention();
@@ -61,18 +77,27 @@ const NotificationStore = {
 
     /**
      * Persist the current cache for the active user.
+     * @returns {Promise<boolean>} True if persistence succeeded, false otherwise
      */
     async persist() {
         const key = this.getStorageKey();
         if (!key) {
-            return;
+            console.warn('[NotificationStore] No authenticated user - skipping persist');
+            return false;
         }
 
         try {
             await AsyncStorage.setItem(key, JSON.stringify(cache));
+            return true;
         } catch (e) {
-            // eslint-disable-next-line no-console
-            console.log('[NotificationStore] Failed to persist notifications', e);
+            console.error('[NotificationStore] Failed to persist notifications:', e.message);
+            
+            // Check for quota exceeded
+            if (e.message && (e.message.includes('QuotaExceededError') || e.message.includes('quota'))) {
+                console.error('[NotificationStore] Storage quota exceeded - consider clearing old data');
+            }
+            
+            return false;
         }
     },
 
@@ -168,6 +193,15 @@ const NotificationStore = {
     async clearAll() {
         cache = [];
         await this.persist();
+    },
+
+    /**
+     * Clear the in-memory cache.
+     * Should be called on sign out to prevent leaking data to next user.
+     */
+    clearCache() {
+        console.log('[NotificationStore] Clearing in-memory cache');
+        cache = [];
     },
 };
 

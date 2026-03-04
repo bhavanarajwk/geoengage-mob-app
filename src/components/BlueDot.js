@@ -10,8 +10,9 @@ import { View, Animated, StyleSheet } from 'react-native';
  * @param {number} y - Y position on screen
  * @param {number} size - Dot size (default: 20)
  * @param {boolean} animated - Enable pulse animation (default: true)
+ * @param {number} accuracy - Location accuracy in meters (default: 5)
  */
-const BlueDot = ({ x, y, size = 20, animated = true }) => {
+const BlueDot = ({ x, y, size = 20, animated = true, accuracy = 5 }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0.3)).current;
 
@@ -63,6 +64,10 @@ const BlueDot = ({ x, y, size = 20, animated = true }) => {
     return null; // Don't render if position is not available
   }
 
+  // Scale pulse ring based on accuracy (smaller = more accurate)
+  // accuracy: 2-5m = 1x, 5-10m = 1.5x, 10-20m = 2x, 20m+ = 2.5x
+  const accuracyScale = Math.min(Math.max(accuracy / 5, 1), 2.5);
+
   return (
     <View
       style={[
@@ -82,7 +87,10 @@ const BlueDot = ({ x, y, size = 20, animated = true }) => {
             height: size * 2,
             borderRadius: size,
             opacity: fadeAnim,
-            transform: [{ scale: pulseAnim }],
+            transform: [{ scale: pulseAnim.interpolate({
+              inputRange: [1, 1.3],
+              outputRange: [accuracyScale, accuracyScale * 1.3],
+            }) }],
           },
         ]}
       />

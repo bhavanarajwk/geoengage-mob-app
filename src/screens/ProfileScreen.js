@@ -1,11 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
-    Alert,
+    RefreshControl,
+    ActivityIndicator,
     Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,11 +14,15 @@ import { Avatar } from 'react-native-paper';
 import auth from '@react-native-firebase/auth';
 import { signOut } from '../services/AuthService';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useCustomAlert } from '../components/CustomAlert';
 
 export default function ProfileScreen({ navigation }) {
     const user = auth().currentUser;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
+    const [refreshing, setRefreshing] = useState(false);
+    const [signingOut, setSigningOut] = useState(false);
+    const alert = useCustomAlert();
 
     useEffect(() => {
         Animated.parallel([
@@ -28,58 +33,113 @@ export default function ProfileScreen({ navigation }) {
 
     // ── All logic unchanged ───────────────────────────────────────────────────
     const handleSignOut = async () => {
-        Alert.alert(
+        alert.show(
             'Sign Out',
             'Are you sure you want to sign out?',
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: 'Cancel', style: 'secondary' },
                 {
                     text: 'Sign Out',
-                    style: 'destructive',
+                    style: 'primary',
                     onPress: async () => {
+                        setSigningOut(true);
                         try {
                             await signOut();
+                            // Successfully signed out - auth state will redirect
                         } catch (error) {
-                            Alert.alert('Sign-Out Failed', error.message);
+                            setSigningOut(false);
+                            alert.show(
+                                'Sign-Out Failed',
+                                error.message || 'Could not sign out. Please try again.',
+                                [{ text: 'OK', style: 'primary' }]
+                            );
                         }
                     },
                 },
-            ],
+            ]
         );
+    };
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            await user?.reload();
+            console.log('[ProfileScreen] Profile data refreshed');
+        } catch (error) {
+            console.error('[ProfileScreen] Failed to refresh profile:', error);
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    const handleSendVerificationEmail = async () => {
+        try {
+            await user?.sendEmailVerification();
+            alert.show(
+                'Verification Email Sent',
+                'Please check your inbox and click the verification link.',
+                [{ text: 'OK', style: 'primary' }]
+            );
+        } catch (error) {
+            console.error('[ProfileScreen] Failed to send verification email:', error);
+            alert.show(
+                'Error',
+                'Could not send verification email. Please try again later.',
+                [{ text: 'OK', style: 'primary' }]
+            );
+        }
     };
 
     const formatDate = (timestamp) => {
         if (!timestamp) return 'N/A';
-        const date = new Date(parseInt(timestamp));
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return 'N/A';
         return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    const formatRelativeTime = (timestamp) => {
+        if (!timestamp) return 'N/A';
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return 'N/A';
+        
+        const now = Date.now();
+        const diff = now - date.getTime();
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        
+        if (minutes < 1) return 'Just now';
+        if (minutes < 60) return `${minutes}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        if (days < 7) return `${days}d ago`;
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
     // ── Data rows ─────────────────────────────────────────────────────────────
     const accountRows = [
         {
-            icon: 'identifier',
-            label: 'User ID',
-            value: user?.uid ? `${user.uid.slice(0, 12)}…` : 'N/A',
-            fullValue: user?.uid,
+            icon: 'email',
+            label: 'Email',
+            value: user?.email || 'N/A',
             iconColor: '#63b3ed',
         },
         {
             icon: user?.emailVerified ? 'check-decagram' : 'alert-decagram',
-            label: 'Email Verified',
+            label: 'Email Status',
             value: user?.emailVerified ? 'Verified' : 'Not Verified',
-            iconColor: user?.emailVerified ? '#22c55e' : '#fbbf24',
+            iconColor: user?.emailVerified ? '#22c55e' : '#f59e0b',
             badge: user?.emailVerified,
         },
         {
-            icon: 'calendar-plus',
-            label: 'Account Created',
-            value: formatDate(user?.metadata?.creationTime),
+            icon: 'account-circle',
+            label: 'Display Name',
+            value: user?.displayName || 'Not Set',
             iconColor: '#a78bfa',
         },
         {
             icon: 'clock-check-outline',
             label: 'Last Sign In',
-            value: formatDate(user?.metadata?.lastSignInTime),
+            value: formatRelativeTime(user?.metadata?.lastSignInTime),
             iconColor: '#34d399',
         },
     ];
@@ -109,6 +169,15 @@ export default function ProfileScreen({ navigation }) {
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={handleRefresh}
+                        colors={['#4285F4']}
+                        tintColor="#4285F4"
+                        progressBackgroundColor="#1e3a5f"
+                    />
+                }
             >
                 <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
@@ -179,6 +248,21 @@ export default function ProfileScreen({ navigation }) {
                         ))}
                     </View>
 
+                    {/* ── Send Verification Email button (if unverified) ───── */}
+                    {!user?.emailVerified && (
+                        <TouchableOpacity
+                            style={styles.verifyEmailButton}
+                            onPress={handleSendVerificationEmail}
+                            activeOpacity={0.85}
+                        >
+                            <View style={styles.verifyEmailIconWrap}>
+                                <Icon name="email-send" size={16} color="#ffffff" />
+                            </View>
+                            <Text style={styles.verifyEmailText}>Send Verification Email</Text>
+                            <Icon name="chevron-right" size={18} color="#94a3b8" />
+                        </TouchableOpacity>
+                    )}
+
                     {/* ── App info card ────────────────────────────────────── */}
                     <View style={styles.sectionLabel}>
                         <Icon name="information-outline" size={13} color="#4a5568" />
@@ -214,6 +298,20 @@ export default function ProfileScreen({ navigation }) {
                     <View style={styles.bottomSpacer} />
                 </Animated.View>
             </ScrollView>
+
+            {/* Custom Alert Component */}
+            <alert.AlertComponent />
+
+            {/* Full-Screen Loading Overlay for Sign Out */}
+            {signingOut && (
+                <View style={styles.loadingOverlay}>
+                    <View style={styles.loadingCard}>
+                        <ActivityIndicator size="large" color="#4285F4" />
+                        <Text style={styles.loadingTitle}>Signing Out...</Text>
+                        <Text style={styles.loadingSubtitle}>Please wait</Text>
+                    </View>
+                </View>
+            )}
         </SafeAreaView>
     );
 }
@@ -377,6 +475,34 @@ const styles = StyleSheet.create({
     badgeTextGreen: { color: '#22c55e' },
     badgeTextYellow: { color: '#fbbf24' },
 
+    // ── Verify Email Button ──
+    verifyEmailButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1e3a5f',
+        borderWidth: 1,
+        borderColor: 'rgba(66, 133, 244, 0.3)',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        gap: 12,
+        marginBottom: 20,
+    },
+    verifyEmailIconWrap: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: '#4285F4',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    verifyEmailText: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#e2e8f0',
+    },
+
     // ── Sign Out ──
     signOutButton: {
         flexDirection: 'row',
@@ -405,4 +531,40 @@ const styles = StyleSheet.create({
         color: '#ef4444',
     },
     bottomSpacer: { height: 24 },
+
+    // ── Loading Overlay (blocks all interaction during sign out) ──
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(13, 17, 23, 0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+    },
+    loadingCard: {
+        backgroundColor: '#1e3a5f',
+        borderRadius: 16,
+        padding: 32,
+        alignItems: 'center',
+        minWidth: 200,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 8,
+    },
+    loadingTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#ffffff',
+        marginTop: 16,
+    },
+    loadingSubtitle: {
+        fontSize: 14,
+        color: '#a8a8b3',
+        marginTop: 4,
+    },
 });

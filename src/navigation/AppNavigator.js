@@ -21,23 +21,39 @@ export default function AppNavigator() {
 
         // Listen to Firebase Auth state changes
         const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
-            if (firebaseUser) {
+            try {
+                if (firebaseUser) {
+                    console.log('[AppNavigator] User authenticated:', firebaseUser.uid);
 
-                // Get fresh ID token
-                try {
-                    const idToken = await firebaseUser.getIdToken();
-
-                } catch (error) {
-
+                    // Get fresh ID token with error handling
+                    try {
+                        const idToken = await firebaseUser.getIdToken();
+                        console.log('[AppNavigator] ID token refreshed successfully');
+                    } catch (tokenError) {
+                        console.error('[AppNavigator] Failed to get ID token:', tokenError);
+                        // Continue anyway - user is authenticated even if token refresh fails
+                        // The app can retry token fetch when needed (e.g., during API calls)
+                    }
+                } else {
+                    console.log('[AppNavigator] User signed out');
                 }
 
-            } else {
-
-            }
-
-            setUser(firebaseUser);
-            if (initializing) {
-                setInitializing(false);
+                // Always update user state, even if token fetch failed
+                setUser(firebaseUser);
+                if (initializing) {
+                    setInitializing(false);
+                }
+            } catch (error) {
+                // Catch any unexpected errors in the auth state handler
+                console.error('[AppNavigator] Error in auth state handler:', error);
+                
+                // Ensure we don't get stuck initializing
+                if (initializing) {
+                    setInitializing(false);
+                }
+                
+                // Set user to null on error to prevent stuck state
+                setUser(null);
             }
         });
 

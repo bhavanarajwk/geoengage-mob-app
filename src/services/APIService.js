@@ -50,6 +50,13 @@ APIService.interceptors.request.use(
         if (user) {
             try {
                 const token = await user.getIdToken(true); // force refresh if expired
+                
+                // Validate token exists before proceeding
+                if (!token) {
+                    console.error('[APIService] Token refresh returned null');
+                    return Promise.reject(new Error('No authentication token available'));
+                }
+                
                 config.headers.Authorization = `Bearer ${token}`;
 
                 // Decode JWT to see claims
@@ -63,7 +70,8 @@ APIService.interceptors.request.use(
                 }
 
             } catch (err) {
-
+                console.error('[APIService] Failed to get auth token:', err);
+                return Promise.reject(new Error('Authentication token unavailable'));
             }
         } else {
 

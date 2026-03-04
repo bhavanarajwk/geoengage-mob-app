@@ -6,10 +6,21 @@ import { INDOOR_ATLAS_CONFIG, validateConfig } from '../config/indoorAtlas';
  * Handles initialization, positioning, and event management
  */
 class IndoorAtlasService {
+  static instance = null;
+
   constructor() {
+    // Return existing instance if already created (singleton pattern)
+    if (IndoorAtlasService.instance) {
+      return IndoorAtlasService.instance;
+    }
+
     this.isInitialized = false;
     this.isPositioning = false;
     this.subscriptions = [];
+    this.initializePromise = null; // Track ongoing initialization
+
+    // Store instance
+    IndoorAtlasService.instance = this;
   }
 
   /**
@@ -18,27 +29,42 @@ class IndoorAtlasService {
    */
   async initialize() {
     if (this.isInitialized) {
-
+      console.log('[IndoorAtlasService] Already initialized');
       return true;
     }
 
-    try {
-      // Validate configuration
-      validateConfig();
-
-      await IndoorAtlas.initialize(
-        INDOOR_ATLAS_CONFIG.apiKey,
-        INDOOR_ATLAS_CONFIG.apiSecret
-      );
-
-      this.isInitialized = true;
-
-      return true;
-
-    } catch (error) {
-
-      throw error;
+    // Return existing promise if initialization already in progress
+    if (this.initializePromise) {
+      console.log('[IndoorAtlasService] Initialization already in progress, returning existing promise');
+      return this.initializePromise;
     }
+
+    // Create and store initialization promise
+    this.initializePromise = (async () => {
+      try {
+        // Validate configuration
+        validateConfig();
+
+        console.log('[IndoorAtlasService] Initializing SDK...');
+        await IndoorAtlas.initialize(
+          INDOOR_ATLAS_CONFIG.apiKey,
+          INDOOR_ATLAS_CONFIG.apiSecret
+        );
+
+        this.isInitialized = true;
+        console.log('[IndoorAtlasService] SDK initialized successfully');
+        return true;
+
+      } catch (error) {
+        console.error('[IndoorAtlasService] Initialization failed:', error.message);
+        throw error;
+      } finally {
+        // Clear promise reference after completion (success or failure)
+        this.initializePromise = null;
+      }
+    })();
+
+    return this.initializePromise;
   }
 
   /**
@@ -51,25 +77,27 @@ class IndoorAtlasService {
     }
 
     if (this.isPositioning) {
-
+      console.log('[IndoorAtlasService] Positioning already active');
       return true;
     }
 
     try {
-
+      console.log('[IndoorAtlasService] Starting positioning...');
       const success = await IndoorAtlas.startPositioning();
 
       if (success) {
         this.isPositioning = true;
-
+        console.log('[IndoorAtlasService] Positioning started successfully');
       } else {
-
+        console.error('[IndoorAtlasService] startPositioning returned false');
       }
 
       return success;
 
     } catch (error) {
-
+      // Reset state flag on error to allow retry
+      this.isPositioning = false;
+      console.error('[IndoorAtlasService] Error starting positioning:', error.message);
       throw error;
     }
   }
@@ -80,23 +108,23 @@ class IndoorAtlasService {
    */
   async stopPositioning() {
     if (!this.isPositioning) {
-
+      console.log('[IndoorAtlasService] Positioning already stopped');
       return true;
     }
 
     try {
-
+      console.log('[IndoorAtlasService] Stopping positioning...');
       const success = await IndoorAtlas.stopPositioning();
 
       if (success) {
         this.isPositioning = false;
-
+        console.log('[IndoorAtlasService] Positioning stopped successfully');
       }
 
       return success;
 
     } catch (error) {
-
+      console.error('[IndoorAtlasService] Error stopping positioning:', error.message);
       throw error;
     }
   }
@@ -111,13 +139,28 @@ class IndoorAtlasService {
     }
 
     try {
-
+      console.log('[IndoorAtlasService] Requesting current location...');
       const location = await IndoorAtlas.getCurrentLocation();
+
+      // Validate response shape
+      if (!location || typeof location !== 'object') {
+        throw new Error('Invalid response from native module: location is null or not an object');
+      }
+
+      if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
+        throw new Error('Invalid location data: missing or invalid latitude/longitude');
+      }
+
+      console.log('[IndoorAtlasService] Current location obtained:', {
+        lat: location.latitude,
+        lng: location.longitude,
+        accuracy: location.accuracy
+      });
 
       return location;
 
     } catch (error) {
-
+      console.error('[IndoorAtlasService] Error getting current location:', error.message);
       throw error;
     }
   }
@@ -201,7 +244,7 @@ class IndoorAtlasService {
    * Remove all event subscriptions and cleanup
    */
   cleanup() {
-
+    console.log('[IndoorAtlasService] Cleaning up subscriptions...');
     // Remove all subscriptions
     this.subscriptions.forEach(sub => {
       if (sub && typeof sub.remove === 'function') {
@@ -210,21 +253,21 @@ class IndoorAtlasService {
     });
 
     this.subscriptions = [];
-
+    console.log('[IndoorAtlasService] Cleanup complete');
   }
 
   /**
    * Full shutdown - stop positioning and cleanup
    */
   async shutdown() {
-
+    console.log('[IndoorAtlasService] Shutting down...');
     if (this.isPositioning) {
       await this.stopPositioning();
     }
 
     this.cleanup();
     this.isInitialized = false;
-
+    console.log('[IndoorAtlasService] Shutdown complete');
   }
 }
 

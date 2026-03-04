@@ -8,7 +8,7 @@ import {
     RefreshControl,
     ScrollView,
     Animated,
-    Alert,
+    ActivityIndicator,
     FlatList,
     Pressable,
 } from 'react-native';
@@ -16,14 +16,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import NotificationStore from '../services/NotificationStore';
 import APIService from '../services/APIService';
+import { useCustomAlert } from '../components/CustomAlert';
 
 export default function NotificationHistoryScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [deletingIds, setDeletingIds] = useState(new Set());
+    const [clearingAll, setClearingAll] = useState(false);
     // Multi-select state
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
+    const alert = useCustomAlert();
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -68,7 +72,14 @@ export default function NotificationHistoryScreen({ navigation }) {
             setHistory(entries);
         } catch (error) {
 
-            Alert.alert('Error', 'Failed to load notification history. Please try again.');
+            alert.show(
+                'Error',
+                'Failed to load notification history.',
+                [
+                    { text: 'Retry', style: 'primary', onPress: () => loadHistory() },
+                    { text: 'Cancel', style: 'secondary' }
+                ]
+            );
         } finally {
             setLoading(false);
         }
@@ -81,22 +92,30 @@ export default function NotificationHistoryScreen({ navigation }) {
     };
 
     const handleClearHistory = () => {
-        Alert.alert(
+        const count = history.length;
+        alert.show(
             'Clear All History',
-            'Are you sure you want to clear all zone visit history?',
+            `Are you sure you want to clear all ${count} notification${count !== 1 ? 's' : ''}? This cannot be undone.`,
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: 'Cancel', style: 'secondary' },
                 {
                     text: 'Clear All',
-                    style: 'destructive',
+                    style: 'primary',
                     onPress: async () => {
+                        setClearingAll(true);
                         try {
                             await NotificationStore.clearAll();
                             setHistory([]);
                             exitSelectionMode();
                         } catch (error) {
 
-                            Alert.alert('Error', 'Failed to clear history');
+                            alert.show(
+                                'Error',
+                                'Failed to clear history. Please try again.',
+                                [{ text: 'OK', style: 'primary' }]
+                            );
+                        } finally {
+                            setClearingAll(false);
                         }
                     },
                 },
@@ -168,14 +187,15 @@ export default function NotificationHistoryScreen({ navigation }) {
     }, []);
 
     const handleDeleteSelected = () => {
-        Alert.alert(
+        const count = selectedIds.size;
+        alert.show(
             'Delete Selected',
-            `Delete ${selectedIds.size} item${selectedIds.size > 1 ? 's' : ''}?`,
+            `Delete ${count} notification${count !== 1 ? 's' : ''}? This cannot be undone.`,
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: 'Cancel', style: 'secondary' },
                 {
                     text: 'Delete',
-                    style: 'destructive',
+                    style: 'primary',
                     onPress: () => {
                         setHistory(prev => {
                             const remaining = prev.filter((item) => !selectedIds.has(item.id));
@@ -203,15 +223,28 @@ export default function NotificationHistoryScreen({ navigation }) {
         );
     };
 
-    const handleDeleteSingle = (itemKey) => {
-        setHistory(prev => prev.filter((item) => item.id !== itemKey));
-        (async () => {
-            try {
-                await NotificationStore.remove(itemKey);
-            } catch (e) {
-
-            }
-        })();
+    const handleDeleteSingle = async (itemKey) => {
+        setDeletingIds(prev => new Set(prev).add(itemKey));
+        try {
+            await NotificationStore.remove(itemKey);
+            setHistory(prev => prev.filter((item) => item.id !== itemKey));
+        } catch (e) {
+            console.error('[NotificationHistory] Delete failed:', e);
+            alert.show(
+                'Delete Failed',
+                'Could not delete notification.',
+                [
+                    { text: 'Retry', style: 'primary', onPress: () => handleDeleteSingle(itemKey) },
+                    { text: 'Cancel', style: 'secondary' }
+                ]
+            );
+        } finally {
+            setDeletingIds(prev => {
+                const next = new Set(prev);
+                next.delete(itemKey);
+                return next;
+            });
+        }
     };
 
     const handleSelectAll = () => {
@@ -224,6 +257,7 @@ export default function NotificationHistoryScreen({ navigation }) {
     const renderHistoryItem = ({ item, index }) => {
         const itemKey = item.id;
         const isSelected = selectedIds.has(itemKey);
+        const isDeleting = deletingIds.has(itemKey);
 
         return (
             <Pressable
@@ -234,7 +268,17 @@ export default function NotificationHistoryScreen({ navigation }) {
                     styles.historyItem,
                     isSelected && styles.historyItemSelected,
                 ]}
+                disabled={isDeleting}
             >
+                {isDeleting && (
+                    <View style={styles.deletingOverlay}>
+                        <View style={styles.deletingContent}>
+                            <Icon name="loading" size={20} color="#4285F4" />
+                            <Text style={styles.deletingText}>Deleting...</Text>
+                        </View>
+                    </View>
+                )}
+                
                 {/* Left: checkbox (selection mode) or icon */}
                 {selectionMode ? (
                     <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
@@ -417,6 +461,20 @@ export default function NotificationHistoryScreen({ navigation }) {
                     </Text>
                 </TouchableOpacity>
             </Animated.View>
+
+            {/* Custom Alert Component */}
+            <alert.AlertComponent />
+
+            {/* Full-Screen Loading Overlay for Clear All */}
+            {clearingAll && (
+                <View style={styles.loadingOverlay}>
+                    <View style={styles.loadingCard}>
+                        <ActivityIndicator size="large" color="#4285F4" />
+                        <Text style={styles.loadingTitle}>Clearing History...</Text>
+                        <Text style={styles.loadingSubtitle}>Please wait</Text>
+                    </View>
+                </View>
+            )}
         </SafeAreaView>
     );
 }
@@ -545,6 +603,24 @@ const styles = StyleSheet.create({
     // ── Content ──
     historyContent: {
         flex: 1,
+    },
+    deletingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(13, 17, 23, 0.85)',
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
+    deletingContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    deletingText: {
+        fontSize: 13,
+        color: '#4285F4',
+        fontWeight: '600',
     },
     zoneName: {
         fontSize: 15,
@@ -681,5 +757,41 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#ffffff',
         letterSpacing: 0.3,
+    },
+
+    // ── Loading Overlay (blocks all interaction during clear all) ──
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(13, 17, 23, 0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+    },
+    loadingCard: {
+        backgroundColor: '#1e3a5f',
+        borderRadius: 16,
+        padding: 32,
+        alignItems: 'center',
+        minWidth: 200,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 8,
+    },
+    loadingTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#ffffff',
+        marginTop: 16,
+    },
+    loadingSubtitle: {
+        fontSize: 14,
+        color: '#a8a8b3',
+        marginTop: 4,
     },
 });
