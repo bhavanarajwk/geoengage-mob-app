@@ -87,10 +87,10 @@ export default function AuthScreen() {
                     if (currentUser) {
                         console.log('[AuthScreen] Timeout reached - user is authenticated');
                     } else {
-                        console.warn('[AuthScreen] Timeout reached - auth state not ready');
+                        console.warn('[AuthScreen] Timeout reached - auth state not ready after 5s');
                     }
                     resolve();
-                }, 2000);
+                }, 5000);
             });
 
             // Request FCM permission and get token
