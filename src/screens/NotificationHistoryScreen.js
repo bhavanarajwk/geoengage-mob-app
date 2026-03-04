@@ -21,6 +21,7 @@ export default function NotificationHistoryScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [deletingIds, setDeletingIds] = useState(new Set());
     // Multi-select state
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -203,15 +204,21 @@ export default function NotificationHistoryScreen({ navigation }) {
         );
     };
 
-    const handleDeleteSingle = (itemKey) => {
-        setHistory(prev => prev.filter((item) => item.id !== itemKey));
-        (async () => {
-            try {
-                await NotificationStore.remove(itemKey);
-            } catch (e) {
-
-            }
-        })();
+    const handleDeleteSingle = async (itemKey) => {
+        setDeletingIds(prev => new Set(prev).add(itemKey));
+        try {
+            await NotificationStore.remove(itemKey);
+            setHistory(prev => prev.filter((item) => item.id !== itemKey));
+        } catch (e) {
+            console.error('[NotificationHistory] Delete failed:', e);
+            Alert.alert('Delete Failed', 'Could not delete notification. Please try again.');
+        } finally {
+            setDeletingIds(prev => {
+                const next = new Set(prev);
+                next.delete(itemKey);
+                return next;
+            });
+        }
     };
 
     const handleSelectAll = () => {
@@ -224,6 +231,7 @@ export default function NotificationHistoryScreen({ navigation }) {
     const renderHistoryItem = ({ item, index }) => {
         const itemKey = item.id;
         const isSelected = selectedIds.has(itemKey);
+        const isDeleting = deletingIds.has(itemKey);
 
         return (
             <Pressable
@@ -234,7 +242,17 @@ export default function NotificationHistoryScreen({ navigation }) {
                     styles.historyItem,
                     isSelected && styles.historyItemSelected,
                 ]}
+                disabled={isDeleting}
             >
+                {isDeleting && (
+                    <View style={styles.deletingOverlay}>
+                        <View style={styles.deletingContent}>
+                            <Icon name="loading" size={20} color="#4285F4" />
+                            <Text style={styles.deletingText}>Deleting...</Text>
+                        </View>
+                    </View>
+                )}
+                
                 {/* Left: checkbox (selection mode) or icon */}
                 {selectionMode ? (
                     <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
@@ -545,6 +563,24 @@ const styles = StyleSheet.create({
     // ── Content ──
     historyContent: {
         flex: 1,
+    },
+    deletingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(13, 17, 23, 0.85)',
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
+    deletingContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    deletingText: {
+        fontSize: 13,
+        color: '#4285F4',
+        fontWeight: '600',
     },
     zoneName: {
         fontSize: 15,

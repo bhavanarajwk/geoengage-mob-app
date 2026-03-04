@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,27 +11,58 @@ export default function InAppNotificationBanner({
     onView,
 }) {
     const insets = useSafeAreaInsets();
+    const swipeY = useRef(new Animated.Value(0)).current;
 
     if (!banner) return null;
 
+    const onGestureEvent = Animated.event(
+        [{ nativeEvent: { translationY: swipeY } }],
+        { useNativeDriver: true }
+    );
+
+    const onHandlerStateChange = ({ nativeEvent }) => {
+        if (nativeEvent.state === State.END) {
+            if (nativeEvent.translationY < -60) {
+                // Swiped up enough, dismiss
+                onDismiss();
+            } else {
+                // Snap back
+                Animated.spring(swipeY, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    tension: 80,
+                    friction: 8,
+                }).start();
+            }
+        }
+    };
+
     return (
-        <Animated.View
-            style={[
-                styles.container,
-                {
-                    top: insets.top + 16,
-                    transform: [
-                        {
-                            translateY: animationValue.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [-40, 0],
-                            }),
-                        },
-                    ],
-                    opacity: animationValue,
-                },
-            ]}
+        <PanGestureHandler
+            onGestureEvent={onGestureEvent}
+            onHandlerStateChange={onHandlerStateChange}
+            activeOffsetY={[-5, 5]}
         >
+            <Animated.View
+                style={[
+                    styles.container,
+                    {
+                        top: insets.top + 16,
+                        transform: [
+                            {
+                                translateY: Animated.add(
+                                    animationValue.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [-40, 0],
+                                    }),
+                                    swipeY
+                                ),
+                            },
+                        ],
+                        opacity: animationValue,
+                    },
+                ]}
+            >
             <View style={styles.content}>
                 <View style={styles.textWrap}>
                     <Text style={styles.title} numberOfLines={1}>
@@ -59,6 +91,7 @@ export default function InAppNotificationBanner({
                 </View>
             </View>
         </Animated.View>
+        </PanGestureHandler>
     );
 }
 

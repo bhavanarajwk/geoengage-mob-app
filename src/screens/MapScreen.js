@@ -51,6 +51,7 @@ export default function MapScreen({ navigation }) {
     const [bannerQueue, setBannerQueue] = useState([]);
     const [currentBanner, setCurrentBanner] = useState(null);
     const [isOnline, setIsOnline] = useState(true);
+    const [accuracy, setAccuracy] = useState(5);
 
     const floorPlanRef = useRef(null);
     const hasLocationFixRef = useRef(false);
@@ -437,6 +438,10 @@ export default function MapScreen({ navigation }) {
                     if (!isActive) return;
                     setHasLocationFix(true);
                     if (location.floorLevel !== undefined && location.floorLevel !== null) setCurrentFloorLevel(location.floorLevel);
+                    // Capture accuracy from location data
+                    if (location.accuracy !== undefined && location.accuracy !== null) {
+                        setAccuracy(location.accuracy);
+                    }
                     // Only update position if we have pixel coordinates from IndoorAtlas
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
                         setPosition({ x: location.pixelX, y: location.pixelY });
@@ -594,7 +599,11 @@ export default function MapScreen({ navigation }) {
                                 width: floorPlan.width,
                                 height: floorPlan.height,
                             }}
-                            userLocation={{ pixelX: position.x, pixelY: position.y }}
+                            userLocation={{ 
+                                pixelX: position.x, 
+                                pixelY: position.y,
+                                accuracy: accuracy,
+                            }}
                         />
                     ) : (
                         <View style={styles.emptyMapState}>

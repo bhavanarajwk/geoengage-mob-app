@@ -186,7 +186,12 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
                 style={{ width: floorPlan.width, height: floorPlan.height }}
               />
               {userLocation.pixelX != null && userLocation.pixelY != null && (
-                <BlueDot x={userLocation.pixelX} y={userLocation.pixelY} size={24} />
+                <BlueDot 
+                  x={userLocation.pixelX} 
+                  y={userLocation.pixelY} 
+                  size={24}
+                  accuracy={userLocation.accuracy || 5}
+                />
               )}
             </Animated.View>
           </PinchGestureHandler>
