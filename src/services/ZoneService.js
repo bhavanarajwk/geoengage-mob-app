@@ -14,13 +14,23 @@ const STORAGE_KEY = '@zone_history';
 const COOLDOWN_SECONDS = 60; // Don't notify about same zone within 60 seconds
 
 class ZoneService {
+  static instance = null;
+
   constructor() {
+    // Return existing instance if already created (singleton pattern)
+    if (ZoneService.instance) {
+      return ZoneService.instance;
+    }
+
     // In-memory cooldown tracking (persists during app session)
     // Format: Map<zoneId, timestamp>
     this.lastNotified = new Map();
 
     // Current zone user is in
     this.currentZone = null;
+
+    // Store instance
+    ZoneService.instance = this;
   }
 
   /**

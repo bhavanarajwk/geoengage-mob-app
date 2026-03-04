@@ -6,11 +6,21 @@ import { INDOOR_ATLAS_CONFIG, validateConfig } from '../config/indoorAtlas';
  * Handles initialization, positioning, and event management
  */
 class IndoorAtlasService {
+  static instance = null;
+
   constructor() {
+    // Return existing instance if already created (singleton pattern)
+    if (IndoorAtlasService.instance) {
+      return IndoorAtlasService.instance;
+    }
+
     this.isInitialized = false;
     this.isPositioning = false;
     this.subscriptions = [];
     this.initializePromise = null; // Track ongoing initialization
+
+    // Store instance
+    IndoorAtlasService.instance = this;
   }
 
   /**
