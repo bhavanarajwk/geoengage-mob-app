@@ -1,6 +1,7 @@
 import auth from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { configureGoogleSignIn } from '../config/googleAuth';
+import NotificationStore from './NotificationStore';
 
 // Call once at app startup (in App.tsx)
 export { configureGoogleSignIn };
@@ -41,9 +42,16 @@ export const signInWithGoogle = async () => {
 };
 
 export const signOut = async () => {
+    console.log('[AuthService] Signing out user...');
+    
+    // Clear notification cache to prevent data leakage to next user
+    NotificationStore.clearCache();
+    
     await GoogleSignin.revokeAccess();
     await GoogleSignin.signOut();
     await auth().signOut();
+    
+    console.log('[AuthService] User signed out successfully');
 };
 
 export const getCurrentUser = () => auth().currentUser;
