@@ -49,6 +49,7 @@ export default function MapScreen({ navigation }) {
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [showLocationWarning, setShowLocationWarning] = useState(false);
     const [loadingDismissed, setLoadingDismissed] = useState(false);
+    const [permissionDenied, setPermissionDenied] = useState(false);
     const [currentZone, setCurrentZone] = useState(null);
     const [currentFloorLevel, setCurrentFloorLevel] = useState(null);
     const [bannerQueue, setBannerQueue] = useState([]);
@@ -367,7 +368,12 @@ export default function MapScreen({ navigation }) {
             try {
                 setIsInitializing(true);
                 const hasPermissions = await requestLocationPermissions();
-                if (!hasPermissions) { setIsInitializing(false); return; }
+                if (!hasPermissions) { 
+                    setIsInitializing(false);
+                    setPermissionDenied(true); // Track that permission was denied
+                    setShowLocationWarning(true); // Show warning immediately when permission denied
+                    return; 
+                }
 
                 await IndoorAtlasService.initialize();
                 setIsInitializing(false);
@@ -621,11 +627,23 @@ export default function MapScreen({ navigation }) {
                                         <View style={styles.warningIconWrap}>
                                             <Icon name="map-marker-question-outline" size={44} color="#fbbf24" />
                                         </View>
-                                        <Text style={styles.warningTitle}>No Indoor Location</Text>
-                                        <Text style={styles.warningText}>
-                                            You may not be in a mapped venue.{'\n'}
-                                            Indoor positioning will work when you're in the office.
-                                        </Text>
+                                        {permissionDenied ? (
+                                            <>
+                                                <Text style={styles.warningTitle}>Location Permission Required</Text>
+                                                <Text style={styles.warningText}>
+                                                    Indoor positioning requires location access.{'\n\n'}
+                                                    To enable: Open Settings → Apps → GeoEngage → Permissions → Allow Location
+                                                </Text>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Text style={styles.warningTitle}>No Indoor Location</Text>
+                                                <Text style={styles.warningText}>
+                                                    You may not be in a mapped venue.{'\n'}
+                                                    Indoor positioning will work when you're in the office.
+                                                </Text>
+                                            </>
+                                        )}
                                         <TouchableOpacity
                                             style={styles.continueButton}
                                             onPress={() => setLoadingDismissed(true)}
@@ -639,7 +657,8 @@ export default function MapScreen({ navigation }) {
                             </View>
                         )}
 
-                            <BlueDot x={position.x} y={position.y} size={24} />
+                            {/* Only show blue dot when we have actual Indoor Atlas location fix */}
+                            {hasLocationFix && <BlueDot x={position.x} y={position.y} size={24} />}
                         </ImageBackground>
                     )}
                 </View>
