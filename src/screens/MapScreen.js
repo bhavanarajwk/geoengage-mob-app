@@ -6,7 +6,6 @@ import {
     StyleSheet,
     Alert,
     StatusBar,
-    ImageBackground,
     Dimensions,
     PermissionsAndroid,
     Platform,
@@ -27,9 +26,6 @@ import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
 import InAppNotificationBanner from '../components/InAppNotificationBanner';
 import IndoorMapView from '../components/IndoorMapView';
-import { latLngToScreen } from '../utils/coordinateConverter';
-
-const floorPlanImage = require('../../assets/floorplan.png');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // IndoorAtlas region types (from IARegion / native module). We only send events for floor and POI zones, not building (venue).
@@ -43,7 +39,6 @@ export default function MapScreen({ navigation }) {
     // ── All state unchanged ───────────────────────────────────────────────────
     const [position, setPosition] = useState({ x: SCREEN_WIDTH / 2, y: 300 });
     const [floorPlan, setFloorPlan] = useState(null);
-    const [imageLayout, setImageLayout] = useState(null);
     const [isInitializing, setIsInitializing] = useState(true);
     const [hasLocationFix, setHasLocationFix] = useState(false);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -56,7 +51,6 @@ export default function MapScreen({ navigation }) {
     const [currentBanner, setCurrentBanner] = useState(null);
 
     const floorPlanRef = useRef(null);
-    const imageLayoutRef = useRef(null);
     const hasLocationFixRef = useRef(false);
     const currentZoneRef = useRef(null);
     const currentFloorLevelRef = useRef(null);
@@ -66,6 +60,8 @@ export default function MapScreen({ navigation }) {
     // UI animation refs
     const zoneAnim = useRef(new Animated.Value(0)).current;
     const headerFade = useRef(new Animated.Value(0)).current;
+    const emptyStateFade = useRef(new Animated.Value(0)).current;
+    const emptyStateFloat = useRef(new Animated.Value(0)).current;
 
     // ── Sync refs ─────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -77,11 +73,6 @@ export default function MapScreen({ navigation }) {
         currentFloorLevelRef.current = currentFloorLevel;
 
     }, [currentFloorLevel]);
-
-    useEffect(() => {
-        imageLayoutRef.current = imageLayout;
-
-    }, [imageLayout]);
 
     useEffect(() => { hasLocationFixRef.current = hasLocationFix; }, [hasLocationFix]);
     useEffect(() => { currentZoneRef.current = currentZone; }, [currentZone]);
@@ -105,34 +96,35 @@ export default function MapScreen({ navigation }) {
         }).start();
     }, []);
 
-    // ── Position calculation (unchanged) ─────────────────────────────────────
-    const calculateScaledPosition = (pixelX, pixelY) => {
-        const currentFloorPlan = floorPlanRef.current;
-        const currentImageLayout = imageLayoutRef.current;
+    // Empty state animations
+    useEffect(() => {
+        if (loadingDismissed && !floorPlan) {
+            // Fade in empty state
+            Animated.timing(emptyStateFade, {
+                toValue: 1,
+                duration: 600,
+                useNativeDriver: true,
+            }).start();
 
-        if (!currentFloorPlan || !currentImageLayout) return { x: pixelX, y: pixelY };
-
-        const containerAspect = currentImageLayout.width / currentImageLayout.height;
-        const imageAspect = currentFloorPlan.width / currentFloorPlan.height;
-
-        let renderedWidth, renderedHeight, offsetX, offsetY;
-
-        if (imageAspect > containerAspect) {
-            renderedWidth = currentImageLayout.width;
-            renderedHeight = currentImageLayout.width / imageAspect;
-            offsetX = 0;
-            offsetY = (currentImageLayout.height - renderedHeight) / 2;
+            // Floating animation loop
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(emptyStateFloat, {
+                        toValue: 1,
+                        duration: 3000,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(emptyStateFloat, {
+                        toValue: 0,
+                        duration: 3000,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
         } else {
-            renderedHeight = currentImageLayout.height;
-            renderedWidth = currentImageLayout.height * imageAspect;
-            offsetX = (currentImageLayout.width - renderedWidth) / 2;
-            offsetY = 0;
+            emptyStateFade.setValue(0);
         }
-
-        const scaleX = renderedWidth / currentFloorPlan.width;
-        const scaleY = renderedHeight / currentFloorPlan.height;
-        return { x: (pixelX * scaleX) + offsetX, y: (pixelY * scaleY) + offsetY };
-    };
+    }, [loadingDismissed, floorPlan]);
 
     // ── Foreground notification banner helpers ───────────────────────────────
     const showNextBanner = () => {
@@ -434,11 +426,11 @@ export default function MapScreen({ navigation }) {
                     if (!isActive) return;
                     setHasLocationFix(true);
                     if (location.floorLevel !== undefined && location.floorLevel !== null) setCurrentFloorLevel(location.floorLevel);
+                    // Only update position if we have pixel coordinates from IndoorAtlas
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
                         setPosition({ x: location.pixelX, y: location.pixelY });
-                    } else {
-                        setPosition(latLngToScreen(location.latitude, location.longitude));
                     }
+                    // Note: lat/lng fallback removed - we only show position when properly calibrated
                 });
 
                 if (isActive) {
@@ -571,98 +563,147 @@ export default function MapScreen({ navigation }) {
                             userLocation={{ pixelX: position.x, pixelY: position.y }}
                         />
                     ) : (
-                        <ImageBackground
-                            source={floorPlanImage}
-                            style={styles.floorPlan}
-                            resizeMode="contain"
-                            onLayout={(event) => {
-                                const { width, height } = event.nativeEvent.layout;
-
-                                setImageLayout({ width, height });
-                            }}
-                        >
-                        {/* Zone Banner */}
-                        {currentZone && (
-                            <Animated.View
-                                style={[
-                                    styles.zoneIndicator,
-                                    {
-                                        opacity: zoneAnim,
-                                        transform: [{
-                                            translateY: zoneAnim.interpolate({
-                                                inputRange: [0, 1],
-                                                outputRange: [30, 0],
-                                            }),
-                                        }],
-                                    },
-                                ]}
-                            >
-                                <View style={styles.zonePulse}>
-                                    <Icon name="map-marker-check" size={18} color="#22c55e" />
-                                </View>
-                                <View style={styles.zoneInfo}>
-                                    <Text style={styles.zoneLabel}>CURRENT ZONE</Text>
-                                    <Text style={styles.zoneName} numberOfLines={1}>{currentZone.name}</Text>
-                                </View>
-                                <View style={styles.zoneTag}>
-                                    <Text style={styles.zoneTagText}>LIVE</Text>
-                                </View>
-                            </Animated.View>
-                        )}
-
-                        {/* Loading Overlay */}
-                        {!loadingDismissed && (isInitializing || !hasLocationFix) && (
-                            <View style={[styles.loadingOverlay, showLocationWarning && styles.loadingOverlaySemi]}>
-                                {isInitializing ? (
-                                    <>
-                                        <ActivityIndicator size="large" color="#63b3ed" />
-                                        <Text style={styles.loadingText}>Initializing Indoor Positioning...</Text>
-                                        <Text style={styles.loadingHint}>Please wait a moment</Text>
-                                    </>
-                                ) : !hasLocationFix && !showLocationWarning ? (
-                                    <>
-                                        <ActivityIndicator size="large" color="#63b3ed" />
-                                        <Text style={styles.loadingText}>Acquiring location...</Text>
-                                        <Text style={styles.loadingHint}>Make sure you're in a mapped venue</Text>
-                                    </>
-                                ) : showLocationWarning ? (
-                                    <View style={styles.warningContainer}>
-                                        <View style={styles.warningIconWrap}>
-                                            <Icon name="map-marker-question-outline" size={44} color="#fbbf24" />
+                        <View style={styles.emptyMapState}>
+                            {/* Loading Overlay */}
+                            {!loadingDismissed && (isInitializing || !hasLocationFix) && (
+                                <View style={[styles.loadingOverlay, showLocationWarning && styles.loadingOverlaySemi]}>
+                                    {isInitializing ? (
+                                        <>
+                                            <ActivityIndicator size="large" color="#63b3ed" />
+                                            <Text style={styles.loadingText}>Initializing Indoor Positioning...</Text>
+                                            <Text style={styles.loadingHint}>Please wait a moment</Text>
+                                        </>
+                                    ) : !hasLocationFix && !showLocationWarning ? (
+                                        <>
+                                            <ActivityIndicator size="large" color="#63b3ed" />
+                                            <Text style={styles.loadingText}>Acquiring location...</Text>
+                                            <Text style={styles.loadingHint}>Make sure you're in a mapped venue</Text>
+                                        </>
+                                    ) : showLocationWarning ? (
+                                        <View style={styles.warningContainer}>
+                                            <View style={styles.warningIconWrap}>
+                                                <Icon name="map-marker-question-outline" size={44} color="#fbbf24" />
+                                            </View>
+                                            {permissionDenied ? (
+                                                <>
+                                                    <Text style={styles.warningTitle}>Location Permission Required</Text>
+                                                    <Text style={styles.warningText}>
+                                                        Indoor positioning requires location access.{'\n\n'}
+                                                        To enable: Open Settings → Apps → GeoEngage → Permissions → Allow Location
+                                                    </Text>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Text style={styles.warningTitle}>No Indoor Location</Text>
+                                                    <Text style={styles.warningText}>
+                                                        You may not be in a mapped venue.{'\n'}
+                                                        Indoor positioning will work when you're in the office.
+                                                    </Text>
+                                                </>
+                                            )}
+                                            <TouchableOpacity
+                                                style={styles.continueButton}
+                                                onPress={() => setLoadingDismissed(true)}
+                                                activeOpacity={0.8}
+                                            >
+                                                <Icon name="arrow-right" size={16} color="#0d1117" />
+                                                <Text style={styles.continueButtonText}>Continue Anyway</Text>
+                                            </TouchableOpacity>
                                         </View>
-                                        {permissionDenied ? (
-                                            <>
-                                                <Text style={styles.warningTitle}>Location Permission Required</Text>
-                                                <Text style={styles.warningText}>
-                                                    Indoor positioning requires location access.{'\n\n'}
-                                                    To enable: Open Settings → Apps → GeoEngage → Permissions → Allow Location
-                                                </Text>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Text style={styles.warningTitle}>No Indoor Location</Text>
-                                                <Text style={styles.warningText}>
-                                                    You may not be in a mapped venue.{'\n'}
-                                                    Indoor positioning will work when you're in the office.
-                                                </Text>
-                                            </>
-                                        )}
+                                    ) : null}
+                                </View>
+                            )}
+
+                            {/* Empty State - No Floor Plan Available */}
+                            {loadingDismissed && !floorPlan && (
+                                <Animated.View 
+                                    style={[
+                                        styles.emptyStateContent,
+                                        {
+                                            opacity: emptyStateFade,
+                                            transform: [{
+                                                translateY: emptyStateFade.interpolate({
+                                                    inputRange: [0, 1],
+                                                    outputRange: [20, 0],
+                                                })
+                                            }]
+                                        }
+                                    ]}
+                                >
+                                    {/* Decorative background circles */}
+                                    <View style={styles.emptyBgCircle1} />
+                                    <View style={styles.emptyBgCircle2} />
+
+                                    {/* Animated floating icon */}
+                                    <Animated.View 
+                                        style={[
+                                            styles.emptyIconContainer,
+                                            {
+                                                transform: [{
+                                                    translateY: emptyStateFloat.interpolate({
+                                                        inputRange: [0, 1],
+                                                        outputRange: [0, -15],
+                                                    })
+                                                }]
+                                            }
+                                        ]}
+                                    >
+                                        <View style={styles.emptyIconGlow} />
+                                        <Icon name="map-search-outline" size={72} color="#4285F4" />
+                                        <View style={styles.emptyIconRing} />
+                                    </Animated.View>
+
+                                    {/* Main message */}
+                                    <Text style={styles.emptyStateTitle}>
+                                        You're Exploring{'\n'}Outside the Venue
+                                    </Text>
+                                    <Text style={styles.emptyStateSubtitle}>
+                                        Indoor positioning works when you're at a mapped location. When you enter an office or venue with GeoEngage, the floor plan will appear here automatically.
+                                    </Text>
+
+                                    {/* Status badges */}
+                                    <View style={styles.emptyStatusRow}>
+                                        <View style={styles.emptyStatusBadge}>
+                                            <Icon name="check-circle" size={16} color="#22c55e" />
+                                            <Text style={styles.emptyStatusText}>GPS Active</Text>
+                                        </View>
+                                        <View style={styles.emptyStatusBadge}>
+                                            <Icon name="bell-ring" size={16} color="#4285F4" />
+                                            <Text style={styles.emptyStatusText}>Notifications On</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Action buttons */}
+                                    <View style={styles.emptyActionsRow}>
                                         <TouchableOpacity
-                                            style={styles.continueButton}
-                                            onPress={() => setLoadingDismissed(true)}
-                                            activeOpacity={0.8}
+                                            style={styles.emptyActionPrimary}
+                                            onPress={() => navigation.navigate('NotificationHistory')}
+                                            activeOpacity={0.85}
                                         >
-                                            <Icon name="arrow-right" size={16} color="#0d1117" />
-                                            <Text style={styles.continueButtonText}>Continue Anyway</Text>
+                                            <Icon name="history" size={20} color="#ffffff" />
+                                            <Text style={styles.emptyActionPrimaryText}>View History</Text>
+                                        </TouchableOpacity>
+                                        
+                                        <TouchableOpacity
+                                            style={styles.emptyActionSecondary}
+                                            onPress={() => navigation.navigate('Profile')}
+                                            activeOpacity={0.85}
+                                        >
+                                            <Icon name="account-circle-outline" size={20} color="#4285F4" />
+                                            <Text style={styles.emptyActionSecondaryText}>Profile</Text>
                                         </TouchableOpacity>
                                     </View>
-                                ) : null}
-                            </View>
-                        )}
 
-                            {/* Only show blue dot when we have actual Indoor Atlas location fix */}
-                            {hasLocationFix && <BlueDot x={position.x} y={position.y} size={24} />}
-                        </ImageBackground>
+                                    {/* Helpful tip */}
+                                    <View style={styles.emptyTipContainer}>
+                                        <Icon name="lightbulb-on-outline" size={18} color="#fbbf24" />
+                                        <Text style={styles.emptyTipText}>
+                                            Tip: You'll receive alerts when you enter geofenced zones
+                                        </Text>
+                                    </View>
+                                </Animated.View>
+                            )}
+                        </View>
                     )}
                 </View>
             </View>
@@ -786,6 +827,188 @@ const styles = StyleSheet.create({
         width: '100%',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+
+    // ── Empty map state ──
+    emptyMapState: {
+        flex: 1,
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#0a0e14',
+        position: 'relative',
+        overflow: 'hidden',
+    },
+    emptyStateContent: {
+        alignItems: 'center',
+        paddingHorizontal: 28,
+        paddingVertical: 40,
+        zIndex: 10,
+    },
+
+    // Decorative background circles
+    emptyBgCircle1: {
+        position: 'absolute',
+        width: 280,
+        height: 280,
+        borderRadius: 140,
+        backgroundColor: 'rgba(66, 133, 244, 0.03)',
+        top: -100,
+        right: -80,
+    },
+    emptyBgCircle2: {
+        position: 'absolute',
+        width: 220,
+        height: 220,
+        borderRadius: 110,
+        backgroundColor: 'rgba(99, 179, 237, 0.04)',
+        bottom: -60,
+        left: -70,
+    },
+
+    // Animated icon container
+    emptyIconContainer: {
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        backgroundColor: '#131c2c',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 32,
+        borderWidth: 2,
+        borderColor: '#1e3a5f',
+        position: 'relative',
+        elevation: 8,
+        shadowColor: '#4285F4',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+    },
+    emptyIconGlow: {
+        position: 'absolute',
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: 'rgba(66, 133, 244, 0.08)',
+    },
+    emptyIconRing: {
+        position: 'absolute',
+        width: 150,
+        height: 150,
+        borderRadius: 75,
+        borderWidth: 1.5,
+        borderColor: 'rgba(66, 133, 244, 0.15)',
+    },
+
+    // Text styles
+    emptyStateTitle: {
+        fontSize: 26,
+        fontWeight: '800',
+        color: '#f1f5f9',
+        marginBottom: 16,
+        textAlign: 'center',
+        lineHeight: 34,
+        letterSpacing: 0.3,
+    },
+    emptyStateSubtitle: {
+        fontSize: 15,
+        color: '#94a3b8',
+        textAlign: 'center',
+        lineHeight: 24,
+        marginBottom: 32,
+        paddingHorizontal: 4,
+        maxWidth: 340,
+    },
+
+    // Status badges
+    emptyStatusRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 28,
+    },
+    emptyStatusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        backgroundColor: '#131c2c',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#1e2d3d',
+    },
+    emptyStatusText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#cbd5e1',
+    },
+
+    // Action buttons
+    emptyActionsRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 24,
+        width: '100%',
+        maxWidth: 340,
+    },
+    emptyActionPrimary: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 15,
+        backgroundColor: '#4285F4',
+        borderRadius: 14,
+        elevation: 4,
+        shadowColor: '#4285F4',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+    },
+    emptyActionPrimaryText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#ffffff',
+        letterSpacing: 0.3,
+    },
+    emptyActionSecondary: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 15,
+        backgroundColor: 'rgba(66, 133, 244, 0.08)',
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: 'rgba(66, 133, 244, 0.3)',
+    },
+    emptyActionSecondaryText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#4285F4',
+        letterSpacing: 0.3,
+    },
+
+    // Tip container
+    emptyTipContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: 'rgba(251, 191, 36, 0.08)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.2)',
+        maxWidth: 340,
+    },
+    emptyTipText: {
+        flex: 1,
+        fontSize: 13,
+        color: '#cbd5e1',
+        lineHeight: 18,
     },
 
     // ── Loading overlay ──
