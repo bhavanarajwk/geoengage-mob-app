@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Image, StyleSheet, Animated, TouchableOpacity, Text, LayoutChangeEvent } from 'react-native';
 import { PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -38,19 +38,64 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
     setViewportSize({ width, height });
   };
 
+  // Reset transforms when floor plan changes (Issue #39)
+  useEffect(() => {
+    if (floorPlan) {
+      console.log('[IndoorMapView] Floor plan changed, resetting transforms');
+      scale.setValue(1);
+      translateX.setValue(0);
+      translateY.setValue(0);
+      lastScale.current = 1;
+      lastTranslate.current = { x: 0, y: 0 };
+    }
+  }, [floorPlan?.url]);
+
+  // Calculate pan boundaries based on current scale (Issue #40)
+  const calculatePanBoundaries = (currentScale: number) => {
+    if (!floorPlan || !viewportSize.width || !viewportSize.height) {
+      return { minX: -Infinity, maxX: Infinity, minY: -Infinity, maxY: Infinity };
+    }
+
+    const scaledWidth = floorPlan.width * currentScale;
+    const scaledHeight = floorPlan.height * currentScale;
+
+    // Allow panning only while keeping some portion of map visible
+    const maxX = Math.max(0, (scaledWidth - viewportSize.width) / 2);
+    const minX = -maxX;
+    const maxY = Math.max(0, (scaledHeight - viewportSize.height) / 2);
+    const minY = -maxY;
+
+    return { minX, maxX, minY, maxY };
+  };
+
   const handlePanGestureEvent = (event) => {
     const { translationX, translationY } = event.nativeEvent;
-    translateX.setValue(lastTranslate.current.x + translationX);
-    translateY.setValue(lastTranslate.current.y + translationY);
+    
+    // Calculate new position
+    const newX = lastTranslate.current.x + translationX;
+    const newY = lastTranslate.current.y + translationY;
+
+    // Enforce boundaries (Issue #40)
+    const boundaries = calculatePanBoundaries(lastScale.current);
+    const clampedX = Math.max(boundaries.minX, Math.min(boundaries.maxX, newX));
+    const clampedY = Math.max(boundaries.minY, Math.min(boundaries.maxY, newY));
+
+    translateX.setValue(clampedX);
+    translateY.setValue(clampedY);
   };
 
   const handlePanStateChange = (event) => {
     const { state, translationX, translationY } = event.nativeEvent;
     if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
-      lastTranslate.current = {
-        x: lastTranslate.current.x + translationX,
-        y: lastTranslate.current.y + translationY,
-      };
+      // Calculate and clamp final position
+      const newX = lastTranslate.current.x + translationX;
+      const newY = lastTranslate.current.y + translationY;
+      
+      const boundaries = calculatePanBoundaries(lastScale.current);
+      const clampedX = Math.max(boundaries.minX, Math.min(boundaries.maxX, newX));
+      const clampedY = Math.max(boundaries.minY, Math.min(boundaries.maxY, newY));
+
+      lastTranslate.current = { x: clampedX, y: clampedY };
     }
   };
 
@@ -75,6 +120,7 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
     if (!floorPlan || userLocation.pixelX == null || userLocation.pixelY == null) return;
     if (!viewportSize.width || !viewportSize.height) return;
 
+    // Use current scale (Issue #41 - improved scale tracking)
     const s = lastScale.current;
     const ux = userLocation.pixelX;
     const uy = userLocation.pixelY;
@@ -85,19 +131,24 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
     const targetTx = cx - s * ux;
     const targetTy = cy - s * uy;
 
+    // Enforce boundaries even for recenter
+    const boundaries = calculatePanBoundaries(s);
+    const clampedTx = Math.max(boundaries.minX, Math.min(boundaries.maxX, targetTx));
+    const clampedTy = Math.max(boundaries.minY, Math.min(boundaries.maxY, targetTy));
+
     Animated.parallel([
       Animated.timing(translateX, {
-        toValue: targetTx,
+        toValue: clampedTx,
         duration: 250,
         useNativeDriver: true,
       }),
       Animated.timing(translateY, {
-        toValue: targetTy,
+        toValue: clampedTy,
         duration: 250,
         useNativeDriver: true,
       }),
     ]).start(() => {
-      lastTranslate.current = { x: targetTx, y: targetTy };
+      lastTranslate.current = { x: clampedTx, y: clampedTy };
     });
   };
 
@@ -142,8 +193,12 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
         </Animated.View>
       </PanGestureHandler>
 
-      <TouchableOpacity style={styles.recenterButton} onPress={handleRecenter} activeOpacity={0.85}>
-        <Icon name="crosshairs-gps" size={18} color="#e5e7eb" />
+      <TouchableOpacity 
+        style={styles.recenterButton} 
+        onPress={handleRecenter} 
+        activeOpacity={0.8}
+      >
+        <Icon name="target" size={20} color="#63b3ed" />
         <Text style={styles.recenterText}>Recenter</Text>
       </TouchableOpacity>
     </View>
@@ -165,22 +220,28 @@ const styles = StyleSheet.create({
   },
   recenterButton: {
     position: 'absolute',
-    bottom: 12,
-    right: 12,
+    top: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#111827',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#1f2937',
+    gap: 7,
+    backgroundColor: '#131c2c',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: '#1e3a5f',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   recenterText: {
-    fontSize: 11,
-    color: '#e5e7eb',
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#e2e8f0',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
 
