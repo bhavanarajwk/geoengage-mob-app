@@ -12,6 +12,7 @@ import {
     Platform,
     Animated,
     ActivityIndicator,
+    AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, Badge } from 'react-native-paper';
@@ -25,6 +26,7 @@ import APIService from '../services/APIService';
 import BlueDot from '../components/BlueDot';
 import NotificationBadge from '../components/NotificationBadge';
 import InAppNotificationBanner from '../components/InAppNotificationBanner';
+import IndoorMapView from '../components/IndoorMapView';
 import { latLngToScreen } from '../utils/coordinateConverter';
 
 const floorPlanImage = require('../../assets/floorplan.png');
@@ -289,6 +291,52 @@ export default function MapScreen({ navigation }) {
         return () => { unsubscribeForeground(); unsubscribeBackground(); };
     }, [navigation]);
 
+    // ── FCM Token Management (refresh + app resume) ───────────────────────────
+    useEffect(() => {
+        let tokenRefreshUnsubscribe = null;
+        let appStateSubscription = null;
+
+        // Subscribe to FCM token refresh events
+        tokenRefreshUnsubscribe = FCMService.onTokenRefresh((newToken, registrationSuccess) => {
+            if (registrationSuccess) {
+                console.log('[MapScreen] FCM token refreshed and registered successfully');
+            } else {
+                console.error('[MapScreen] FCM token refreshed but registration failed');
+            }
+        });
+
+        // Re-register token when app comes to foreground
+        const handleAppStateChange = async (nextAppState) => {
+            if (nextAppState === 'active') {
+                console.log('[MapScreen] App resumed - checking FCM token...');
+                try {
+                    const currentToken = await FCMService.requestPermissionAndGetToken();
+                    if (currentToken) {
+                        const success = await FCMService.registerTokenWithBackend(currentToken);
+                        if (success) {
+                            console.log('[MapScreen] FCM token re-validated on app resume');
+                        } else {
+                            console.warn('[MapScreen] Failed to re-register token on app resume');
+                        }
+                    }
+                } catch (error) {
+                    console.error('[MapScreen] Error checking FCM token on resume:', error);
+                }
+            }
+        };
+
+        appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+        return () => {
+            if (tokenRefreshUnsubscribe) {
+                tokenRefreshUnsubscribe();
+            }
+            if (appStateSubscription) {
+                appStateSubscription.remove();
+            }
+        };
+    }, []);
+
     // ── Indoor Atlas (unchanged) ──────────────────────────────────────────────
     useEffect(() => {
         let isActive = true;
@@ -380,7 +428,7 @@ export default function MapScreen({ navigation }) {
                     setHasLocationFix(true);
                     if (location.floorLevel !== undefined && location.floorLevel !== null) setCurrentFloorLevel(location.floorLevel);
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
-                        setPosition(calculateScaledPosition(location.pixelX, location.pixelY));
+                        setPosition({ x: location.pixelX, y: location.pixelY });
                     } else {
                         setPosition(latLngToScreen(location.latitude, location.longitude));
                     }
@@ -504,16 +552,26 @@ export default function MapScreen({ navigation }) {
                 </View>
 
                 <View style={styles.mapContainer}>
-                    <ImageBackground
-                        source={floorPlan ? { uri: floorPlan.url } : floorPlanImage}
-                        style={styles.floorPlan}
-                        resizeMode="contain"
-                        onLayout={(event) => {
-                            const { width, height } = event.nativeEvent.layout;
+                    {floorPlan ? (
+                        <IndoorMapView
+                            floorPlan={{
+                                url: floorPlan.url,
+                                width: floorPlan.width,
+                                height: floorPlan.height,
+                            }}
+                            userLocation={{ pixelX: position.x, pixelY: position.y }}
+                        />
+                    ) : (
+                        <ImageBackground
+                            source={floorPlanImage}
+                            style={styles.floorPlan}
+                            resizeMode="contain"
+                            onLayout={(event) => {
+                                const { width, height } = event.nativeEvent.layout;
 
-                            setImageLayout({ width, height });
-                        }}
-                    >
+                                setImageLayout({ width, height });
+                            }}
+                        >
                         {/* Zone Banner */}
                         {currentZone && (
                             <Animated.View
@@ -581,8 +639,9 @@ export default function MapScreen({ navigation }) {
                             </View>
                         )}
 
-                        <BlueDot x={position.x} y={position.y} size={24} />
-                    </ImageBackground>
+                            <BlueDot x={position.x} y={position.y} size={24} />
+                        </ImageBackground>
+                    )}
                 </View>
             </View>
 
