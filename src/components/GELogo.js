@@ -69,58 +69,52 @@ const GELogo = ({
   }, [animated, pulseAnim, glowAnim]);
 
   // Calculate dimensions
-  const viewBoxSize = 200;
+  const viewBoxSize = 230;
   const scale = size / viewBoxSize;
   const textHeight = showText ? 35 : 0;
   const taglineHeight = showTagline ? 20 : 0;
   const totalHeight = size + textHeight + taglineHeight;
 
-  // SVG paths for stylized G and E
-  // G - Modern rounded G with open bottom for location dot
+  // SVG paths for stylized G and E - BOLD/THICK version
+  // G - Bold rounded G with space for blue dot
   const gPath = `
-    M 85 40
-    C 45 40, 20 70, 20 100
-    C 20 130, 45 160, 85 160
-    C 110 160, 130 145, 140 125
-    L 140 105
-    L 95 105
-    L 95 115
-    L 125 115
-    C 118 135, 103 145, 85 145
-    C 55 145, 35 125, 35 100
-    C 35 75, 55 55, 85 55
-    C 100 55, 115 62, 125 75
-    L 138 65
-    C 125 48, 107 40, 85 40
+    M 80 25
+    C 30 25, 5 55, 5 100
+    C 5 145, 30 175, 80 175
+    C 115 175, 140 155, 145 125
+    L 145 95
+    L 85 95
+    L 85 115
+    L 120 115
+    C 115 145, 100 155, 80 155
+    C 45 155, 25 130, 25 100
+    C 25 70, 45 45, 80 45
+    C 100 45, 118 55, 130 72
+    L 148 55
+    C 132 32, 108 25, 80 25
     Z
   `;
 
-  // E - Modern stylized E with rounded edges
+  // E - Bold stylized E
   const ePath = `
-    M 150 40
-    L 150 160
-    L 195 160
-    L 195 145
-    L 165 145
-    L 165 107
-    L 190 107
-    L 190 92
-    L 165 92
-    L 165 55
-    L 195 55
-    L 195 40
+    M 165 25
+    L 165 175
+    L 220 175
+    L 220 155
+    L 190 155
+    L 190 110
+    L 215 110
+    L 215 90
+    L 190 90
+    L 190 45
+    L 220 45
+    L 220 25
     Z
   `;
 
-  // Location pin shape inside G
-  const pinPath = `
-    M 75 85
-    C 60 85, 50 95, 50 110
-    C 50 130, 75 150, 75 150
-    C 75 150, 100 130, 100 110
-    C 100 95, 90 85, 75 85
-    Z
-  `;
+  // Blue dot position inside G (centered in the G's inner curve)
+  const dotCenterX = 58;
+  const dotCenterY = 100;
 
   return (
     <View style={[styles.container, {width: size, height: totalHeight}]}>
@@ -173,17 +167,34 @@ const GELogo = ({
           {/* Main E letter */}
           <Path d={ePath} fill="url(#logoGradient)" />
 
-          {/* Location pin inside G */}
-          <Path d={pinPath} fill="url(#pinGradient)" opacity={0.9} />
-
-          {/* Animated pulse ring around pin dot */}
+          {/* Pulsing blue dot inside G - like map BlueDot */}
+          {/* Outer pulse ring 2 */}
           {animated && (
             <AnimatedCircle
-              cx="75"
-              cy="110"
+              cx={dotCenterX}
+              cy={dotCenterY}
               r={pulseAnim.interpolate({
                 inputRange: [1, 1.3],
-                outputRange: [12, 18],
+                outputRange: [20, 32],
+              })}
+              fill="none"
+              stroke={gradientEnd}
+              strokeWidth="1.5"
+              opacity={glowAnim.interpolate({
+                inputRange: [0, 0.6],
+                outputRange: [0, 0.3],
+              })}
+            />
+          )}
+
+          {/* Outer pulse ring 1 */}
+          {animated && (
+            <AnimatedCircle
+              cx={dotCenterX}
+              cy={dotCenterY}
+              r={pulseAnim.interpolate({
+                inputRange: [1, 1.3],
+                outputRange: [14, 24],
               })}
               fill="none"
               stroke={gradientEnd}
@@ -192,17 +203,14 @@ const GELogo = ({
             />
           )}
 
-          {/* Center dot of pin */}
-          <Circle cx="75" cy="110" r="8" fill="#FFFFFF" />
-          <Circle cx="75" cy="110" r="5" fill={gradientEnd} />
-
-          {/* Decorative accent line on E */}
-          <Path
-            d="M 152 98 L 188 98"
-            stroke="url(#accentGradient)"
-            strokeWidth="4"
-            strokeLinecap="round"
-          />
+          {/* Blue dot outer glow */}
+          <Circle cx={dotCenterX} cy={dotCenterY} r="12" fill="rgba(6, 182, 212, 0.3)" />
+          
+          {/* Blue dot main circle */}
+          <Circle cx={dotCenterX} cy={dotCenterY} r="9" fill={gradientEnd} />
+          
+          {/* Blue dot inner highlight */}
+          <Circle cx={dotCenterX - 2} cy={dotCenterY - 2} r="2.5" fill="rgba(255, 255, 255, 0.6)" />
         </G>
       </Svg>
 

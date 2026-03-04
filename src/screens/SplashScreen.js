@@ -120,12 +120,12 @@ const SplashScreen = (props) => {
 
     animationSequence.start();
 
-    // GUARANTEED 3-second timer - independent of animation
+    // GUARANTEED 4-second timer - independent of animation
     const timer = setTimeout(() => {
       if (callbackRef.current) {
         callbackRef.current();
       }
-    }, 3000);
+    }, 4000);
 
     // Cleanup
     return () => {
@@ -187,7 +187,7 @@ const SplashScreen = (props) => {
                 transform: [{scale: logoScale}],
               },
             ]}>
-            <GELogo size={140} animated={true} />
+            <GELogo size={180} animated={true} />
           </Animated.View>
 
           {/* App name with gradient effect (simulated) */}

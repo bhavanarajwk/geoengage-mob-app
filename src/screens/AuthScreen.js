@@ -282,7 +282,7 @@ export default function AuthScreen() {
                     {/* ── Branding ── */}
                     <View style={styles.brandingWrapper}>
                         <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }}>
-                            <GELogo size={100} animated={true} />
+                            <GELogo size={130} animated={true} />
                         </Animated.View>
 
                         <Animated.View style={[styles.appNameContainer, { opacity: titleAnim }]}>
@@ -438,6 +438,7 @@ const styles = StyleSheet.create({
     googleButton: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         backgroundColor: COLORS.white,
         borderRadius: 14,
         paddingVertical: 15,
@@ -463,7 +464,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     googleButtonText: {
-        flex: 1,
         fontSize: 16,
         fontWeight: '600',
         color: '#1e293b',
