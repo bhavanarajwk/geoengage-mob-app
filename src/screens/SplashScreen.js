@@ -34,6 +34,11 @@ const COLORS = {
  */
 const SplashScreen = (props) => {
   const {onAnimationComplete} = props;
+  
+  // Store callback in ref to avoid stale closure
+  const callbackRef = useRef(onAnimationComplete);
+  callbackRef.current = onAnimationComplete;
+  
   // Animation values
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -84,58 +89,50 @@ const SplashScreen = (props) => {
 
     // Main animation sequence
     const animationSequence = Animated.sequence([
-      // Phase 1: Logo appears (0-0.8s)
+      // Phase 1: Logo appears (0-1.0s)
       Animated.parallel([
         Animated.timing(logoOpacity, {
           toValue: 1,
-          duration: 600,
+          duration: 800,
           useNativeDriver: true,
         }),
-        Animated.spring(logoScale, {
+        Animated.timing(logoScale, {
           toValue: 1,
-          friction: 8,
-          tension: 40,
+          duration: 800,
           useNativeDriver: true,
         }),
       ]),
 
-      // Phase 2: App name fades in (0.8-1.5s)
+      // Phase 2: App name fades in (1.0-1.6s)
       Animated.timing(textOpacity, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         useNativeDriver: true,
       }),
 
-      // Phase 3: Tagline fades in (1.5-2.2s)
+      // Phase 3: Tagline fades in (1.6-2.2s)
       Animated.timing(taglineOpacity, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         useNativeDriver: true,
       }),
-
-      // Phase 4: Hold (2.2-3.0s)
-      Animated.delay(800),
     ]);
 
-    animationSequence.start(() => {
-      // Animation complete - notify parent
-      if (onAnimationComplete) {
-        onAnimationComplete();
+    animationSequence.start();
+
+    // GUARANTEED 3-second timer - independent of animation
+    const timer = setTimeout(() => {
+      if (callbackRef.current) {
+        callbackRef.current();
       }
-    });
+    }, 3000);
 
     // Cleanup
     return () => {
       animationSequence.stop();
+      clearTimeout(timer);
     };
-  }, [
-    logoScale,
-    logoOpacity,
-    textOpacity,
-    taglineOpacity,
-    particleAnims,
-    onAnimationComplete,
-  ]);
+  }, []); // Empty dependency array - runs only once
 
   // Particle positions (using numbers for better type safety)
   const particlePositions = [

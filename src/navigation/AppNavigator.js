@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import auth from '@react-native-firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureGoogleSignIn } from '../services/AuthService';
 
+import SplashScreen from '../screens/SplashScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
 import AuthScreen from '../screens/AuthScreen';
 import MapScreen from '../screens/MapScreen';
 import NotificationHistoryScreen from '../screens/NotificationHistoryScreen';
@@ -14,10 +17,24 @@ const Stack = createNativeStackNavigator();
 export default function AppNavigator() {
     const [user, setUser] = useState(null);
     const [initializing, setInitializing] = useState(true);
+    const [showSplash, setShowSplash] = useState(true);
+    const [isFirstLaunch, setIsFirstLaunch] = useState(null);
 
     useEffect(() => {
         // Configure Google Sign-In FIRST — must happen before any signIn() call
         configureGoogleSignIn();
+
+        // Check if first launch
+        const checkFirstLaunch = async () => {
+            try {
+                const hasSeenOnboarding = await AsyncStorage.getItem('hasSeenOnboarding');
+                setIsFirstLaunch(hasSeenOnboarding === null);
+            } catch (error) {
+                console.error('[AppNavigator] Error checking first launch:', error);
+                setIsFirstLaunch(false);
+            }
+        };
+        checkFirstLaunch();
 
         // Listen to Firebase Auth state changes
         const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
@@ -60,8 +77,18 @@ export default function AppNavigator() {
         return unsubscribe; // Unsubscribe on unmount
     }, [initializing]);
 
-    // Render nothing while Firebase resolves the initial auth state
-    if (initializing) {
+    // Handle splash completion - memoized to prevent re-renders
+    const handleSplashComplete = useCallback(() => {
+        setShowSplash(false);
+    }, []);
+
+    // Show splash screen first
+    if (showSplash) {
+        return <SplashScreen onAnimationComplete={handleSplashComplete} />;
+    }
+
+    // Wait for first launch check and auth initialization
+    if (initializing || isFirstLaunch === null) {
         return null;
     }
 
@@ -89,7 +116,24 @@ export default function AppNavigator() {
                     </>
                 ) : (
                     // Unauthenticated stack
-                    <Stack.Screen name="Auth" component={AuthScreen} />
+                    <>
+                        {isFirstLaunch && (
+                            <Stack.Screen 
+                                name="Onboarding" 
+                                component={OnboardingScreen}
+                                options={{
+                                    animation: 'fade',
+                                }}
+                            />
+                        )}
+                        <Stack.Screen 
+                            name="Auth" 
+                            component={AuthScreen}
+                            options={{
+                                animation: 'fade',
+                            }}
+                        />
+                    </>
                 )}
             </Stack.Navigator>
         </NavigationContainer>
