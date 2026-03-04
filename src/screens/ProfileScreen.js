@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
+    RefreshControl,
     Alert,
     Animated,
 } from 'react-native';
@@ -18,6 +19,7 @@ export default function ProfileScreen({ navigation }) {
     const user = auth().currentUser;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         Animated.parallel([
@@ -48,38 +50,86 @@ export default function ProfileScreen({ navigation }) {
         );
     };
 
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            await user?.reload();
+            console.log('[ProfileScreen] Profile data refreshed');
+        } catch (error) {
+            console.error('[ProfileScreen] Failed to refresh profile:', error);
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    const handleSendVerificationEmail = async () => {
+        try {
+            await user?.sendEmailVerification();
+            Alert.alert(
+                'Verification Email Sent',
+                'Please check your inbox and click the verification link.',
+                [{ text: 'OK' }]
+            );
+        } catch (error) {
+            console.error('[ProfileScreen] Failed to send verification email:', error);
+            Alert.alert(
+                'Error',
+                'Could not send verification email. Please try again later.',
+                [{ text: 'OK' }]
+            );
+        }
+    };
+
     const formatDate = (timestamp) => {
         if (!timestamp) return 'N/A';
-        const date = new Date(parseInt(timestamp));
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return 'N/A';
         return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    const formatRelativeTime = (timestamp) => {
+        if (!timestamp) return 'N/A';
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return 'N/A';
+        
+        const now = Date.now();
+        const diff = now - date.getTime();
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        
+        if (minutes < 1) return 'Just now';
+        if (minutes < 60) return `${minutes}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        if (days < 7) return `${days}d ago`;
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
     // ── Data rows ─────────────────────────────────────────────────────────────
     const accountRows = [
         {
-            icon: 'identifier',
-            label: 'User ID',
-            value: user?.uid ? `${user.uid.slice(0, 12)}…` : 'N/A',
-            fullValue: user?.uid,
+            icon: 'email',
+            label: 'Email',
+            value: user?.email || 'N/A',
             iconColor: '#63b3ed',
         },
         {
             icon: user?.emailVerified ? 'check-decagram' : 'alert-decagram',
-            label: 'Email Verified',
+            label: 'Email Status',
             value: user?.emailVerified ? 'Verified' : 'Not Verified',
-            iconColor: user?.emailVerified ? '#22c55e' : '#fbbf24',
+            iconColor: user?.emailVerified ? '#22c55e' : '#f59e0b',
             badge: user?.emailVerified,
         },
         {
-            icon: 'calendar-plus',
-            label: 'Account Created',
-            value: formatDate(user?.metadata?.creationTime),
+            icon: 'account-circle',
+            label: 'Display Name',
+            value: user?.displayName || 'Not Set',
             iconColor: '#a78bfa',
         },
         {
             icon: 'clock-check-outline',
             label: 'Last Sign In',
-            value: formatDate(user?.metadata?.lastSignInTime),
+            value: formatRelativeTime(user?.metadata?.lastSignInTime),
             iconColor: '#34d399',
         },
     ];
@@ -109,6 +159,15 @@ export default function ProfileScreen({ navigation }) {
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={handleRefresh}
+                        colors={['#4285F4']}
+                        tintColor="#4285F4"
+                        progressBackgroundColor="#1e3a5f"
+                    />
+                }
             >
                 <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
@@ -178,6 +237,21 @@ export default function ProfileScreen({ navigation }) {
                             </View>
                         ))}
                     </View>
+
+                    {/* ── Send Verification Email button (if unverified) ───── */}
+                    {!user?.emailVerified && (
+                        <TouchableOpacity
+                            style={styles.verifyEmailButton}
+                            onPress={handleSendVerificationEmail}
+                            activeOpacity={0.85}
+                        >
+                            <View style={styles.verifyEmailIconWrap}>
+                                <Icon name="email-send" size={16} color="#ffffff" />
+                            </View>
+                            <Text style={styles.verifyEmailText}>Send Verification Email</Text>
+                            <Icon name="chevron-right" size={18} color="#94a3b8" />
+                        </TouchableOpacity>
+                    )}
 
                     {/* ── App info card ────────────────────────────────────── */}
                     <View style={styles.sectionLabel}>
@@ -376,6 +450,34 @@ const styles = StyleSheet.create({
     badgeText: { fontSize: 12, fontWeight: '700' },
     badgeTextGreen: { color: '#22c55e' },
     badgeTextYellow: { color: '#fbbf24' },
+
+    // ── Verify Email Button ──
+    verifyEmailButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1e3a5f',
+        borderWidth: 1,
+        borderColor: 'rgba(66, 133, 244, 0.3)',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        gap: 12,
+        marginBottom: 20,
+    },
+    verifyEmailIconWrap: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: '#4285F4',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    verifyEmailText: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#e2e8f0',
+    },
 
     // ── Sign Out ──
     signOutButton: {
