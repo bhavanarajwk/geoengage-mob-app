@@ -12,6 +12,7 @@ import {
     Platform,
     Animated,
     ActivityIndicator,
+    AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, Badge } from 'react-native-paper';
@@ -289,6 +290,52 @@ export default function MapScreen({ navigation }) {
 
         return () => { unsubscribeForeground(); unsubscribeBackground(); };
     }, [navigation]);
+
+    // ── FCM Token Management (refresh + app resume) ───────────────────────────
+    useEffect(() => {
+        let tokenRefreshUnsubscribe = null;
+        let appStateSubscription = null;
+
+        // Subscribe to FCM token refresh events
+        tokenRefreshUnsubscribe = FCMService.onTokenRefresh((newToken, registrationSuccess) => {
+            if (registrationSuccess) {
+                console.log('[MapScreen] FCM token refreshed and registered successfully');
+            } else {
+                console.error('[MapScreen] FCM token refreshed but registration failed');
+            }
+        });
+
+        // Re-register token when app comes to foreground
+        const handleAppStateChange = async (nextAppState) => {
+            if (nextAppState === 'active') {
+                console.log('[MapScreen] App resumed - checking FCM token...');
+                try {
+                    const currentToken = await FCMService.requestPermissionAndGetToken();
+                    if (currentToken) {
+                        const success = await FCMService.registerTokenWithBackend(currentToken);
+                        if (success) {
+                            console.log('[MapScreen] FCM token re-validated on app resume');
+                        } else {
+                            console.warn('[MapScreen] Failed to re-register token on app resume');
+                        }
+                    }
+                } catch (error) {
+                    console.error('[MapScreen] Error checking FCM token on resume:', error);
+                }
+            }
+        };
+
+        appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+        return () => {
+            if (tokenRefreshUnsubscribe) {
+                tokenRefreshUnsubscribe();
+            }
+            if (appStateSubscription) {
+                appStateSubscription.remove();
+            }
+        };
+    }, []);
 
     // ── Indoor Atlas (unchanged) ──────────────────────────────────────────────
     useEffect(() => {

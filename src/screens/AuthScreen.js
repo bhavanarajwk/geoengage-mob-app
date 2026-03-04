@@ -66,10 +66,8 @@ export default function AuthScreen() {
         try {
             const authResult = await signInWithGoogle();
 
-            // eslint-disable-next-line no-console
             console.log('[AuthScreen] Firebase user UID:', authResult.user?.uid);
-            // eslint-disable-next-line no-console
-            console.log('[AuthScreen] Firebase ID token:', authResult.firebaseIdToken);
+            console.log('[AuthScreen] Sign-in successful, waiting for auth state...');
 
             // CRITICAL: Wait for Firebase auth state to fully update
             // This ensures auth().currentUser is set before API calls
@@ -77,48 +75,58 @@ export default function AuthScreen() {
             await new Promise(resolve => {
                 const unsubscribe = auth().onAuthStateChanged(user => {
                     if (user && user.uid === authResult.user.uid) {
-
+                        console.log('[AuthScreen] Auth state confirmed for user:', user.uid);
                         unsubscribe();
                         resolve();
                     }
                 });
                 // Fallback timeout in case listener doesn't fire (shouldn't happen)
                 setTimeout(() => {
-
                     const currentUser = auth().currentUser;
                     if (currentUser) {
-
+                        console.log('[AuthScreen] Timeout reached - user is authenticated');
                     } else {
-
+                        console.warn('[AuthScreen] Timeout reached - auth state not ready');
                     }
                     resolve();
                 }, 2000);
             });
 
+            // Request FCM permission and get token
+            console.log('[AuthScreen] Requesting FCM permission...');
             const fcmToken = await FCMService.requestPermissionAndGetToken();
 
-            // eslint-disable-next-line no-console
-            console.log('[AuthScreen] FCM token:', fcmToken);
-
             if (fcmToken) {
-
-                try {
-
-                    const response = await APIService.post('/api/v1/register-device', { fcm_token: fcmToken });
-
-                } catch (apiErr) {
-
+                console.log('[AuthScreen] FCM token obtained, registering with backend...');
+                
+                // Use the new registration method with retry logic
+                const success = await FCMService.registerTokenWithBackend(fcmToken);
+                
+                if (success) {
+                    console.log('[AuthScreen] Device registered successfully');
+                } else {
+                    console.error('[AuthScreen] Device registration failed after retries');
+                    // Don't block sign-in, but warn user
+                    Alert.alert(
+                        'Notification Setup Issue',
+                        'You are signed in, but notifications may not work properly. Please check your connection.',
+                        [{ text: 'OK' }]
+                    );
                 }
             } else {
-
+                console.warn('[AuthScreen] No FCM token - user may have denied notification permission');
+                // User denied notification permission or error occurred
+                // Don't show alert since this is a valid user choice
             }
         } catch (error) {
+            console.error('[AuthScreen] Sign-in error:', error);
 
             const code = (error && error.code && String(error.code).toLowerCase()) || '';
             const msg = (error && error.message && String(error.message).toLowerCase()) || '';
 
             // Treat any cancel-like error as a silent cancel from the user's perspective.
             if (code.includes('cancel') || msg.includes('cancel')) {
+                console.log('[AuthScreen] User cancelled sign-in');
                 // User cancelled — do nothing
             } else {
                 Alert.alert('Sign-In Failed', error.message || 'Something went wrong. Please try again.');
