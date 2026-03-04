@@ -259,7 +259,16 @@ export default function MapScreen({ navigation }) {
             }
 
             setUnreadNotifications(prev => prev + 1);
-            setBannerQueue(prev => [...prev, stored]);
+            
+            // Limit banner queue to 5 items maximum to prevent memory leaks
+            setBannerQueue(prev => {
+                const newQueue = [...prev, stored];
+                if (newQueue.length > 5) {
+                    console.warn('[MapScreen] Banner queue full (5 max), dropping oldest notification');
+                    return newQueue.slice(-5); // Keep last 5 items
+                }
+                return newQueue;
+            });
         };
 
         const unsubscribeForeground = FCMService.subscribeForeground(async remoteMessage => {
