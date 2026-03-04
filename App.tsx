@@ -6,6 +6,7 @@ import { Provider as PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import AppNavigator from './src/navigation/AppNavigator';
 import { configureGoogleSignIn } from './src/services/AuthService';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import SplashScreen from './src/screens/SplashScreen';
 
 // Suppress warnings that don't affect functionality
 LogBox.ignoreLogs([
@@ -42,6 +43,9 @@ export default function App() {
         <SafeAreaProvider>
           <PaperProvider theme={theme}>
             <AppNavigator />
+            <SplashScreen 
+      onAnimationComplete={() => console.log('Splash complete!')} 
+    />
           </PaperProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
