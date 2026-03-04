@@ -3,6 +3,9 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import APIService from './APIService';
 
 const FCMService = {
+    // Race condition prevention flag
+    isRequesting: false,
+
     /**
      * MUST be called in index.js BEFORE AppRegistry.registerComponent.
      * Handles notifications when the app is in the background or killed state.
@@ -73,20 +76,24 @@ const FCMService = {
      */
     onTokenRefresh(onTokenRefresh) {
         return messaging().onTokenRefresh(async (newToken) => {
-            console.log('[FCMService] FCM token refreshed:', newToken);
-            
-            // Automatically register new token with backend
-            const success = await this.registerTokenWithBackend(newToken);
-            
-            if (success) {
-                console.log('[FCMService] New token registered successfully');
-            } else {
-                console.error('[FCMService] Failed to register refreshed token');
-            }
+            try {
+                console.log('[FCMService] FCM token refreshed:', newToken);
+                
+                // Automatically register new token with backend
+                const success = await this.registerTokenWithBackend(newToken);
+                
+                if (success) {
+                    console.log('[FCMService] New token registered successfully');
+                } else {
+                    console.error('[FCMService] Failed to register refreshed token');
+                }
 
-            // Notify caller
-            if (onTokenRefresh) {
-                onTokenRefresh(newToken, success);
+                // Notify caller
+                if (typeof onTokenRefresh === 'function') {
+                    onTokenRefresh(newToken, success);
+                }
+            } catch (error) {
+                console.error('[FCMService] Error in onTokenRefresh callback:', error);
             }
         });
     },
@@ -97,6 +104,14 @@ const FCMService = {
      * @returns {Promise<string|null>} FCM token or null if permission denied
      */
     async requestPermissionAndGetToken() {
+        // Prevent concurrent requests
+        if (this.isRequesting) {
+            console.warn('[FCMService] Token request already in progress, rejecting duplicate call');
+            return null;
+        }
+
+        this.isRequesting = true;
+
         try {
             // On Android 13+ we must explicitly request the POST_NOTIFICATIONS runtime permission.
             if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -109,7 +124,7 @@ const FCMService = {
                     const androidGranted = result === PermissionsAndroid.RESULTS.GRANTED;
 
                     if (!androidGranted) {
-                        console.warn('[FCMService] POST_NOTIFICATIONS permission denied');
+                        console.warn('[FCMService] POST_NOTIFICATIONS permission denied by user');
                         return null;
                     }
                     console.log('[FCMService] POST_NOTIFICATIONS permission granted');
@@ -122,14 +137,15 @@ const FCMService = {
                 authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
             if (!granted) {
-                console.warn('[FCMService] Firebase messaging permission denied');
+                console.warn('[FCMService] Firebase messaging permission denied by user');
                 return null;
             }
 
+            console.log('[FCMService] Permissions granted, fetching FCM token...');
             const token = await messaging().getToken();
             
             if (!token) {
-                console.error('[FCMService] Failed to get FCM token - token is null');
+                console.error('[FCMService] Failed to get FCM token - messaging().getToken() returned null');
                 return null;
             }
 
@@ -137,8 +153,10 @@ const FCMService = {
             return token;
 
         } catch (error) {
-            console.error('[FCMService] Error getting FCM token:', error);
+            console.error('[FCMService] Exception while getting FCM token:', error.message);
             return null;
+        } finally {
+            this.isRequesting = false;
         }
     },
 
@@ -151,12 +169,21 @@ const FCMService = {
      */
     subscribeForeground(onMessage) {
         return messaging().onMessage(async remoteMessage => {
-            console.log('[FCMService] Foreground message received:', {
-                messageId: remoteMessage.messageId,
-                title: remoteMessage.notification?.title,
-                campaignId: remoteMessage.data?.campaign_id,
-            });
-            onMessage(remoteMessage);
+            try {
+                console.log('[FCMService] Foreground message received:', {
+                    messageId: remoteMessage.messageId,
+                    title: remoteMessage.notification?.title,
+                    campaignId: remoteMessage.data?.campaign_id,
+                });
+
+                if (typeof onMessage === 'function') {
+                    onMessage(remoteMessage);
+                } else {
+                    console.error('[FCMService] subscribeForeground callback is not a function');
+                }
+            } catch (error) {
+                console.error('[FCMService] Error in foreground message handler:', error);
+            }
         });
     },
 
@@ -168,22 +195,31 @@ const FCMService = {
      */
     subscribeBackgroundOpen(onOpen) {
         return messaging().onNotificationOpenedApp(async remoteMessage => {
-            console.log('[FCMService] Notification opened from background:', {
-                messageId: remoteMessage.messageId,
-                campaignId: remoteMessage.data?.campaign_id,
-            });
+            try {
+                console.log('[FCMService] Notification opened from background:', {
+                    messageId: remoteMessage.messageId,
+                    campaignId: remoteMessage.data?.campaign_id,
+                });
 
-            if (remoteMessage?.data?.campaign_id) {
-                try {
-                    await APIService.post('/api/v1/notification-click', {
-                        campaign_id: parseInt(remoteMessage.data.campaign_id, 10),
-                    });
-                    console.log('[FCMService] Notification click tracked');
-                } catch (err) {
-                    console.error('[FCMService] Failed to track notification click:', err.message);
+                if (remoteMessage?.data?.campaign_id) {
+                    try {
+                        await APIService.post('/api/v1/notification-click', {
+                            campaign_id: parseInt(remoteMessage.data.campaign_id, 10),
+                        });
+                        console.log('[FCMService] Notification click tracked');
+                    } catch (err) {
+                        console.error('[FCMService] Failed to track notification click:', err.message);
+                    }
                 }
+
+                if (typeof onOpen === 'function') {
+                    onOpen(remoteMessage);
+                } else {
+                    console.error('[FCMService] subscribeBackgroundOpen callback is not a function');
+                }
+            } catch (error) {
+                console.error('[FCMService] Error in background notification open handler:', error);
             }
-            onOpen(remoteMessage);
         });
     },
 
@@ -193,24 +229,33 @@ const FCMService = {
      * @param {function} onOpen - Callback receiving the remoteMessage object
      */
     async checkInitialNotification(onOpen) {
-        const remoteMessage = await messaging().getInitialNotification();
-        if (remoteMessage) {
-            console.log('[FCMService] App opened from killed state via notification:', {
-                messageId: remoteMessage.messageId,
-                campaignId: remoteMessage.data?.campaign_id,
-            });
+        try {
+            const remoteMessage = await messaging().getInitialNotification();
+            if (remoteMessage) {
+                console.log('[FCMService] App opened from killed state via notification:', {
+                    messageId: remoteMessage.messageId,
+                    campaignId: remoteMessage.data?.campaign_id,
+                });
 
-            if (remoteMessage?.data?.campaign_id) {
-                try {
-                    await APIService.post('/api/v1/notification-click', {
-                        campaign_id: parseInt(remoteMessage.data.campaign_id, 10),
-                    });
-                    console.log('[FCMService] Initial notification click tracked');
-                } catch (err) {
-                    console.error('[FCMService] Failed to track initial notification click:', err.message);
+                if (remoteMessage?.data?.campaign_id) {
+                    try {
+                        await APIService.post('/api/v1/notification-click', {
+                            campaign_id: parseInt(remoteMessage.data.campaign_id, 10),
+                        });
+                        console.log('[FCMService] Initial notification click tracked');
+                    } catch (err) {
+                        console.error('[FCMService] Failed to track initial notification click:', err.message);
+                    }
+                }
+
+                if (typeof onOpen === 'function') {
+                    onOpen(remoteMessage);
+                } else {
+                    console.error('[FCMService] checkInitialNotification callback is not a function');
                 }
             }
-            onOpen(remoteMessage);
+        } catch (error) {
+            console.error('[FCMService] Error checking initial notification:', error);
         }
     },
 };
