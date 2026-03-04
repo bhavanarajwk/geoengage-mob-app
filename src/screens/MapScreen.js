@@ -51,7 +51,6 @@ export default function MapScreen({ navigation }) {
     const [bannerQueue, setBannerQueue] = useState([]);
     const [currentBanner, setCurrentBanner] = useState(null);
     const [isOnline, setIsOnline] = useState(true);
-    const [apiHealthy, setApiHealthy] = useState(true);
 
     const floorPlanRef = useRef(null);
     const hasLocationFixRef = useRef(false);
@@ -224,31 +223,6 @@ export default function MapScreen({ navigation }) {
             setIsOnline(connected);
         });
         return () => unsubscribe();
-    }, []);
-
-    // ── API health monitoring ─────────────────────────────────────────────────
-    useEffect(() => {
-        const checkAPIHealth = async () => {
-            try {
-                // Lightweight health check - try to reach the API with minimal request
-                const response = await APIService.get('/api/v1/notifications', {
-                    params: { limit: 1 },
-                    timeout: 5000,
-                });
-                setApiHealthy(response.status === 200);
-            } catch (error) {
-                // API is unreachable or erroring
-                setApiHealthy(false);
-            }
-        };
-
-        // Check immediately on mount
-        checkAPIHealth();
-
-        // Then check every 30 seconds
-        const interval = setInterval(checkAPIHealth, 30000);
-
-        return () => clearInterval(interval);
     }, []);
 
     // ── FCM (foreground + background handling) ────────────────────────────────
@@ -524,9 +498,19 @@ export default function MapScreen({ navigation }) {
             active: hasLocationFix,
         },
         {
-            icon: !isOnline ? 'wifi-off' : (apiHealthy ? 'check-circle' : 'alert-circle'),
-            label: !isOnline ? 'Offline' : (apiHealthy ? 'API Healthy' : 'API Degraded'),
-            active: isOnline && apiHealthy,
+            icon: 'layers',
+            label: currentFloorLevel !== null ? `Floor ${currentFloorLevel}` : 'No Floor',
+            active: currentFloorLevel !== null,
+        },
+        {
+            icon: currentZone ? 'map-marker-radius' : 'map-marker-off',
+            label: currentZone ? currentZone.name : 'No Zone',
+            active: !!currentZone,
+        },
+        {
+            icon: 'bell-ring',
+            label: 'Notifications On',
+            active: true,
         },
     ];
 
@@ -732,7 +716,7 @@ export default function MapScreen({ navigation }) {
                 {statusChips.map((chip, i) => (
                     <View key={i} style={[styles.statusChip, chip.active && styles.statusChipActive]}>
                         <View style={[styles.statusDot, chip.active && styles.statusDotActive]} />
-                        <Icon name={chip.icon} size={13} color={chip.active ? '#22c55e' : '#4a5568'} />
+                        <Icon name={chip.icon} size={11} color={chip.active ? '#22c55e' : '#4a5568'} />
                         <Text style={[styles.statusText, chip.active && styles.statusTextActive]}>
                             {chip.label}
                         </Text>
@@ -1180,40 +1164,41 @@ const styles = StyleSheet.create({
     // ── Status chips ──
     statusRow: {
         flexDirection: 'row',
-        gap: 10,
+        flexWrap: 'wrap',
+        gap: 6,
         justifyContent: 'center',
     },
     statusChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
+        gap: 4,
         backgroundColor: '#131c2c',
         borderWidth: 1,
         borderColor: '#1e2d3d',
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 20,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 16,
     },
     statusChipActive: {
         borderColor: 'rgba(34, 197, 94, 0.25)',
         backgroundColor: 'rgba(34, 197, 94, 0.06)',
     },
     statusDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
         backgroundColor: '#334155',
     },
     statusDotActive: {
         backgroundColor: '#22c55e',
     },
     statusText: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#4a5568',
         fontWeight: '500',
     },
     statusTextActive: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#22c55e',
         fontWeight: '500',
     },
