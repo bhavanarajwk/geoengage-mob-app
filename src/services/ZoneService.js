@@ -54,7 +54,7 @@ class ZoneService {
   markNotified(zoneId) {
     const now = Date.now();
     this.lastNotified.set(zoneId, now);
-
+    console.log(`[ZoneService] Cooldown started for zone: ${zoneId} (${COOLDOWN_SECONDS}s)`);
   }
 
   /**
@@ -69,45 +69,54 @@ class ZoneService {
    * @returns {Promise<void>}
    */
   async saveZoneEntry(entry) {
+    let backendSuccess = false;
+    let localSuccess = false;
+
+    // Save to backend first (triggers campaigns)
     try {
+      // Note: floorLevel comes from Indoor Atlas location updates (location.floorLevel)
+      // It's an integer representing the floor number (e.g., 1, 2, 3)
+      // If null, we default to 1
+      const floorId = entry.floorLevel !== null && entry.floorLevel !== undefined 
+        ? entry.floorLevel 
+        : 1;
 
-      // Save to backend first (triggers campaigns)
-      try {
-        // Note: floorLevel comes from Indoor Atlas location updates (location.floorLevel)
-        // It's an integer representing the floor number (e.g., 1, 2, 3)
-        // If null, we default to 1
-        const floorId = entry.floorLevel !== null && entry.floorLevel !== undefined 
-          ? entry.floorLevel 
-          : 1;
+      const eventType = entry.eventType === 'floor' ? 'floor' : 'zone';
 
-        const eventType = entry.eventType === 'floor' ? 'floor' : 'zone';
+      // Backend expects all fields to be non-null, even for floor entries.
+      // For floors we treat the region as a "zone" representing that floor.
+      const zoneId = entry.zoneId || (eventType === 'floor' ? `floor-${floorId}` : 'unknown-zone');
+      const zoneName = entry.zoneName || (eventType === 'floor' ? `Floor ${floorId}` : 'Unknown Zone');
 
-        // Backend expects all fields to be non-null, even for floor entries.
-        // For floors we treat the region as a "zone" representing that floor.
-        const zoneId = entry.zoneId || (eventType === 'floor' ? `floor-${floorId}` : 'unknown-zone');
-        const zoneName = entry.zoneName || (eventType === 'floor' ? `Floor ${floorId}` : 'Unknown Zone');
+      const payload = {
+        event_type: eventType,  // 'floor' or 'zone'
+        zone_id: zoneId,        // Floor or zone identifier (string, never null)
+        zone_name: zoneName,    // Display name (string, never null)
+        floor_id: floorId,      // Floor number (integer)
+      };
 
-        const payload = {
-          event_type: eventType,  // 'floor' or 'zone'
-          zone_id: zoneId,        // Floor or zone identifier (string, never null)
-          zone_name: zoneName,    // Display name (string, never null)
-          floor_id: floorId,      // Floor number (integer)
-        };
+      console.log('[ZoneService] Sending zone/floor event to backend:', payload);
+      const response = await APIService.post('/api/v1/event', payload);
+      backendSuccess = true;
+      console.log('[ZoneService] Backend save successful:', response.data);
 
-        // eslint-disable-next-line no-console
-        console.log('[ZoneService] Sending zone/floor event payload:', payload);
+    } catch (apiErr) {
+      console.error('[ZoneService] Backend save failed:', {
+        error: apiErr.message,
+        status: apiErr.response?.status,
+        eventType: entry.eventType,
+        zoneId: entry.zoneId
+      });
 
-        const response = await APIService.post('/api/v1/event', payload);
-
-      } catch (apiErr) {
-
-        if (apiErr.response?.status === 401) {
-
-        }
-        // Continue to save locally even if backend fails
+      if (apiErr.response?.status === 401) {
+        console.warn('[ZoneService] Authentication error - user token may be expired');
       }
+      // Continue to save locally even if backend fails
+    }
 
-      // Also save to local AsyncStorage as backup (use local method to avoid backend call)
+    // Save to local AsyncStorage as backup
+    try {
+      console.log('[ZoneService] Saving to local storage...');
       const data = await AsyncStorage.getItem(STORAGE_KEY);
       const history = data ? JSON.parse(data) : [];
       history.unshift({
@@ -116,10 +125,26 @@ class ZoneService {
       });
       const trimmedHistory = history.slice(0, 100);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedHistory));
+      localSuccess = true;
+      console.log('[ZoneService] Local storage save successful');
 
-    } catch (error) {
+    } catch (storageErr) {
+      console.error('[ZoneService] Local storage save failed:', {
+        error: storageErr.message,
+        eventType: entry.eventType,
+        zoneId: entry.zoneId
+      });
+    }
 
+    // Log final result
+    if (!backendSuccess && !localSuccess) {
+      const error = new Error('Failed to save zone entry to both backend and local storage');
+      console.error('[ZoneService] Critical: Complete save failure');
       throw error;
+    } else if (!backendSuccess) {
+      console.warn('[ZoneService] Partial failure: Backend failed but local storage succeeded');
+    } else if (!localSuccess) {
+      console.warn('[ZoneService] Partial failure: Backend succeeded but local storage failed');
     }
   }
 
@@ -133,26 +158,34 @@ class ZoneService {
    */
   async getZoneHistory(limit = 50, offset = 0) {
     try {
-
+      console.log('[ZoneService] Fetching zone history from backend...');
       const response = await APIService.get('/api/v1/notifications', {
         params: { limit, offset },
       });
 
+      console.log(`[ZoneService] Backend returned ${response.data?.length || 0} entries`);
       return response.data || [];
 
     } catch (apiErr) {
+      console.warn('[ZoneService] Backend fetch failed, falling back to local storage:', apiErr.message);
 
       // Fallback to AsyncStorage
       try {
         const data = await AsyncStorage.getItem(STORAGE_KEY);
-        if (!data) return [];
+        
+        if (!data) {
+          console.log('[ZoneService] No local history found (empty)');
+          return [];
+        }
 
         const history = JSON.parse(data);
-
+        console.log(`[ZoneService] Loaded ${history.length} entries from local storage`);
         return history;
-      } catch (storageErr) {
 
-        return [];
+      } catch (storageErr) {
+        console.error('[ZoneService] Local storage read failed:', storageErr.message);
+        // Throw error to differentiate storage failure from empty history
+        throw new Error(`Failed to read zone history: ${storageErr.message}`);
       }
     }
   }
@@ -165,13 +198,15 @@ class ZoneService {
    */
   async clearHistory() {
     try {
+      console.log('[ZoneService] Clearing zone history...');
       await AsyncStorage.removeItem(STORAGE_KEY);
+      console.log('[ZoneService] Zone history cleared successfully');
 
       // 🔄 FUTURE: Replace above with API call
       // await APIService.clearZoneHistory();
 
     } catch (error) {
-
+      console.error('[ZoneService] Failed to clear history:', error.message);
       throw error;
     }
   }
@@ -188,9 +223,9 @@ class ZoneService {
     this.currentZone = zone;
 
     if (zone) {
-
+      console.log('[ZoneService] Current zone set:', zone.name || zone.id);
     } else {
-
+      console.log('[ZoneService] Current zone cleared (user exited)');
     }
   }
 
@@ -208,7 +243,7 @@ class ZoneService {
    */
   clearCooldowns() {
     this.lastNotified.clear();
-
+    console.log('[ZoneService] All cooldowns cleared');
   }
 
   /**
