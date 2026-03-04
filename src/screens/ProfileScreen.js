@@ -6,7 +6,7 @@ import {
     TouchableOpacity,
     ScrollView,
     RefreshControl,
-    Alert,
+    ActivityIndicator,
     Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,12 +14,15 @@ import { Avatar } from 'react-native-paper';
 import auth from '@react-native-firebase/auth';
 import { signOut } from '../services/AuthService';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useCustomAlert } from '../components/CustomAlert';
 
 export default function ProfileScreen({ navigation }) {
     const user = auth().currentUser;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
     const [refreshing, setRefreshing] = useState(false);
+    const [signingOut, setSigningOut] = useState(false);
+    const alert = useCustomAlert();
 
     useEffect(() => {
         Animated.parallel([
@@ -30,23 +33,30 @@ export default function ProfileScreen({ navigation }) {
 
     // ── All logic unchanged ───────────────────────────────────────────────────
     const handleSignOut = async () => {
-        Alert.alert(
+        alert.show(
             'Sign Out',
             'Are you sure you want to sign out?',
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: 'Cancel', style: 'secondary' },
                 {
                     text: 'Sign Out',
-                    style: 'destructive',
+                    style: 'primary',
                     onPress: async () => {
+                        setSigningOut(true);
                         try {
                             await signOut();
+                            // Successfully signed out - auth state will redirect
                         } catch (error) {
-                            Alert.alert('Sign-Out Failed', error.message);
+                            setSigningOut(false);
+                            alert.show(
+                                'Sign-Out Failed',
+                                error.message || 'Could not sign out. Please try again.',
+                                [{ text: 'OK', style: 'primary' }]
+                            );
                         }
                     },
                 },
-            ],
+            ]
         );
     };
 
@@ -65,17 +75,17 @@ export default function ProfileScreen({ navigation }) {
     const handleSendVerificationEmail = async () => {
         try {
             await user?.sendEmailVerification();
-            Alert.alert(
+            alert.show(
                 'Verification Email Sent',
                 'Please check your inbox and click the verification link.',
-                [{ text: 'OK' }]
+                [{ text: 'OK', style: 'primary' }]
             );
         } catch (error) {
             console.error('[ProfileScreen] Failed to send verification email:', error);
-            Alert.alert(
+            alert.show(
                 'Error',
                 'Could not send verification email. Please try again later.',
-                [{ text: 'OK' }]
+                [{ text: 'OK', style: 'primary' }]
             );
         }
     };
@@ -288,6 +298,20 @@ export default function ProfileScreen({ navigation }) {
                     <View style={styles.bottomSpacer} />
                 </Animated.View>
             </ScrollView>
+
+            {/* Custom Alert Component */}
+            <alert.AlertComponent />
+
+            {/* Full-Screen Loading Overlay for Sign Out */}
+            {signingOut && (
+                <View style={styles.loadingOverlay}>
+                    <View style={styles.loadingCard}>
+                        <ActivityIndicator size="large" color="#4285F4" />
+                        <Text style={styles.loadingTitle}>Signing Out...</Text>
+                        <Text style={styles.loadingSubtitle}>Please wait</Text>
+                    </View>
+                </View>
+            )}
         </SafeAreaView>
     );
 }
@@ -507,4 +531,40 @@ const styles = StyleSheet.create({
         color: '#ef4444',
     },
     bottomSpacer: { height: 24 },
+
+    // ── Loading Overlay (blocks all interaction during sign out) ──
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(13, 17, 23, 0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+    },
+    loadingCard: {
+        backgroundColor: '#1e3a5f',
+        borderRadius: 16,
+        padding: 32,
+        alignItems: 'center',
+        minWidth: 200,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 8,
+    },
+    loadingTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#ffffff',
+        marginTop: 16,
+    },
+    loadingSubtitle: {
+        fontSize: 14,
+        color: '#a8a8b3',
+        marginTop: 4,
+    },
 });
