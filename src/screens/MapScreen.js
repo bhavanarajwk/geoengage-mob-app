@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, Badge } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import NetInfo from '@react-native-community/netinfo';
 import auth from '@react-native-firebase/auth';
 import FCMService from '../services/FCMService';
 import IndoorAtlasService from '../services/IndoorAtlasService';
@@ -49,6 +50,8 @@ export default function MapScreen({ navigation }) {
     const [currentFloorLevel, setCurrentFloorLevel] = useState(null);
     const [bannerQueue, setBannerQueue] = useState([]);
     const [currentBanner, setCurrentBanner] = useState(null);
+    const [isOnline, setIsOnline] = useState(true);
+    const [apiHealthy, setApiHealthy] = useState(true);
 
     const floorPlanRef = useRef(null);
     const hasLocationFixRef = useRef(false);
@@ -213,6 +216,40 @@ export default function MapScreen({ navigation }) {
             showNextBanner();
         }
     }, [bannerQueue, currentBanner]);
+
+    // ── Network connectivity monitoring ───────────────────────────────────────
+    useEffect(() => {
+        const unsubscribe = NetInfo.addEventListener(state => {
+            const connected = state.isConnected && state.isInternetReachable !== false;
+            setIsOnline(connected);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // ── API health monitoring ─────────────────────────────────────────────────
+    useEffect(() => {
+        const checkAPIHealth = async () => {
+            try {
+                // Lightweight health check - try to reach the API with minimal request
+                const response = await APIService.get('/api/v1/notifications', {
+                    params: { limit: 1 },
+                    timeout: 5000,
+                });
+                setApiHealthy(response.status === 200);
+            } catch (error) {
+                // API is unreachable or erroring
+                setApiHealthy(false);
+            }
+        };
+
+        // Check immediately on mount
+        checkAPIHealth();
+
+        // Then check every 30 seconds
+        const interval = setInterval(checkAPIHealth, 30000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     // ── FCM (foreground + background handling) ────────────────────────────────
     useEffect(() => {
@@ -435,7 +472,12 @@ export default function MapScreen({ navigation }) {
 
                 if (isActive) {
                     await IndoorAtlasService.startPositioning();
-                    setTimeout(() => { if (isActive && !hasLocationFixRef.current) setShowLocationWarning(true); }, 10000);
+                    // After 5s with no location fix, skip warning and show empty state directly
+                    setTimeout(() => { 
+                        if (isActive && !hasLocationFixRef.current) {
+                            setLoadingDismissed(true);
+                        }
+                    }, 5000);
                 }
 
             } catch (error) {
@@ -482,9 +524,9 @@ export default function MapScreen({ navigation }) {
             active: hasLocationFix,
         },
         {
-            icon: !isInitializing ? 'wifi' : 'wifi-off',
-            label: !isInitializing ? 'Connected' : 'Connecting...',
-            active: !isInitializing,
+            icon: !isOnline ? 'wifi-off' : (apiHealthy ? 'check-circle' : 'alert-circle'),
+            label: !isOnline ? 'Offline' : (apiHealthy ? 'API Healthy' : 'API Degraded'),
+            active: isOnline && apiHealthy,
         },
     ];
 
@@ -501,6 +543,14 @@ export default function MapScreen({ navigation }) {
                     onDismiss={handleBannerDismiss}
                     onView={handleBannerView}
                 />
+            )}
+
+            {/* ── Offline Banner ─────────────────────────────────────────── */}
+            {!isOnline && (
+                <View style={styles.offlineBanner}>
+                    <Icon name="wifi-off" size={16} color="#f59e0b" />
+                    <Text style={styles.offlineBannerText}>You're offline</Text>
+                </View>
             )}
 
             {/* ── Header ─────────────────────────────────────────────────── */}
@@ -564,53 +614,22 @@ export default function MapScreen({ navigation }) {
                         />
                     ) : (
                         <View style={styles.emptyMapState}>
-                            {/* Loading Overlay */}
+                            {/* Loading Overlay - shows while initializing or acquiring location */}
                             {!loadingDismissed && (isInitializing || !hasLocationFix) && (
-                                <View style={[styles.loadingOverlay, showLocationWarning && styles.loadingOverlaySemi]}>
+                                <View style={styles.loadingOverlay}>
                                     {isInitializing ? (
                                         <>
                                             <ActivityIndicator size="large" color="#63b3ed" />
                                             <Text style={styles.loadingText}>Initializing Indoor Positioning...</Text>
                                             <Text style={styles.loadingHint}>Please wait a moment</Text>
                                         </>
-                                    ) : !hasLocationFix && !showLocationWarning ? (
+                                    ) : (
                                         <>
                                             <ActivityIndicator size="large" color="#63b3ed" />
                                             <Text style={styles.loadingText}>Acquiring location...</Text>
                                             <Text style={styles.loadingHint}>Make sure you're in a mapped venue</Text>
                                         </>
-                                    ) : showLocationWarning ? (
-                                        <View style={styles.warningContainer}>
-                                            <View style={styles.warningIconWrap}>
-                                                <Icon name="map-marker-question-outline" size={44} color="#fbbf24" />
-                                            </View>
-                                            {permissionDenied ? (
-                                                <>
-                                                    <Text style={styles.warningTitle}>Location Permission Required</Text>
-                                                    <Text style={styles.warningText}>
-                                                        Indoor positioning requires location access.{'\n\n'}
-                                                        To enable: Open Settings → Apps → GeoEngage → Permissions → Allow Location
-                                                    </Text>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Text style={styles.warningTitle}>No Indoor Location</Text>
-                                                    <Text style={styles.warningText}>
-                                                        You may not be in a mapped venue.{'\n'}
-                                                        Indoor positioning will work when you're in the office.
-                                                    </Text>
-                                                </>
-                                            )}
-                                            <TouchableOpacity
-                                                style={styles.continueButton}
-                                                onPress={() => setLoadingDismissed(true)}
-                                                activeOpacity={0.8}
-                                            >
-                                                <Icon name="arrow-right" size={16} color="#0d1117" />
-                                                <Text style={styles.continueButtonText}>Continue Anyway</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    ) : null}
+                                    )}
                                 </View>
                             )}
 
@@ -741,6 +760,25 @@ const styles = StyleSheet.create({
         backgroundColor: '#0d1117',
         paddingHorizontal: 16,
         paddingBottom: 20,
+    },
+
+    // ── Offline Banner ──
+    offlineBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 12,
+        marginHorizontal: -16,
+        marginBottom: 8,
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(245, 158, 11, 0.25)',
+    },
+    offlineBannerText: {
+        fontSize: 13,
+        color: '#f59e0b',
+        fontWeight: '600',
     },
 
     // ── Header ──
