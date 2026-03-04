@@ -67,6 +67,7 @@ export default function AuthScreen() {
             const authResult = await signInWithGoogle();
 
             console.log('[AuthScreen] Firebase user UID:', authResult.user?.uid);
+            console.log('[AuthScreen] Firebase JWT Token:', authResult.firebaseIdToken);
             console.log('[AuthScreen] Sign-in successful, waiting for auth state...');
 
             // CRITICAL: Wait for Firebase auth state to fully update
