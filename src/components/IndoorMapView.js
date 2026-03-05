@@ -87,9 +87,24 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
     };
   }, [userLocation.pixelX, userLocation.pixelY, scale, isAutoFollowing, viewportSize, floorPlan, needsVerticalScroll]);
 
-  // Recenter placeholder — will be implemented in Commit 3
+  // Recenter: resume auto-follow and scroll to blue dot
   const handleRecenter = () => {
-    console.log('[IndoorMapView] Recenter pressed (will be functional in Commit 3)');
+    if (!floorPlan || userLocation.pixelX == null || userLocation.pixelY == null) return;
+    if (!viewportSize.width || !viewportSize.height) return;
+
+    console.log('[IndoorMapView] Recenter pressed - resuming auto-follow');
+    setIsAutoFollowing(true);
+
+    const scaledX = userLocation.pixelX * scale;
+    const scaledY = userLocation.pixelY * scale;
+
+    if (needsVerticalScroll) {
+      const scrollY = Math.max(0, scaledY - (viewportSize.height / 2));
+      scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+    } else {
+      const scrollX = Math.max(0, scaledX - (viewportSize.width / 2));
+      scrollViewRef.current?.scrollTo({ x: scrollX, animated: true });
+    }
   };
 
   if (!floorPlan) {
@@ -104,6 +119,11 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         bounces={false}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => {
+          console.log('[IndoorMapView] Manual scroll - pausing auto-follow');
+          setIsAutoFollowing(false);
+        }}
         contentContainerStyle={[
           styles.scrollContent,
           // Center content on the non-scrolling axis
