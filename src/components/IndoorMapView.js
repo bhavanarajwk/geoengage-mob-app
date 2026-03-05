@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Image, StyleSheet, Animated, TouchableOpacity, Text, LayoutChangeEvent } from 'react-native';
-import { PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler';
+import { View, Image, StyleSheet, ScrollView, TouchableOpacity, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import BlueDot from './BlueDot';
 
@@ -13,6 +12,7 @@ type FloorPlan = {
 type UserLocation = {
   pixelX: number | null;
   pixelY: number | null;
+  accuracy?: number;
 };
 
 type Props = {
@@ -20,136 +20,91 @@ type Props = {
   userLocation: UserLocation;
 };
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 3;
-
 export default function IndoorMapView({ floorPlan, userLocation }: Props) {
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [scale, setScale] = useState(1);
+  const [isAutoFollowing, setIsAutoFollowing] = useState(true);
+  const scrollViewRef = useRef(null);
+  const autoScrollTimer = useRef(null);
 
-  const scale = useRef(new Animated.Value(1)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-
-  const lastScale = useRef(1);
-  const lastTranslate = useRef({ x: 0, y: 0 });
-
-  const onViewportLayout = (event: LayoutChangeEvent) => {
+  const onViewportLayout = (event) => {
     const { width, height } = event.nativeEvent.layout;
     setViewportSize({ width, height });
   };
 
-  // Reset transforms when floor plan changes (Issue #39)
+  // Calculate "cover" scale — fills container completely, zero empty space
   useEffect(() => {
-    if (floorPlan) {
-      console.log('[IndoorMapView] Floor plan changed, resetting transforms');
-      scale.setValue(1);
-      translateX.setValue(0);
-      translateY.setValue(0);
-      lastScale.current = 1;
-      lastTranslate.current = { x: 0, y: 0 };
+    if (floorPlan && viewportSize.width > 0 && viewportSize.height > 0) {
+      const scaleX = viewportSize.width / floorPlan.width;
+      const scaleY = viewportSize.height / floorPlan.height;
+      const calculatedScale = Math.max(scaleX, scaleY);
+      setScale(calculatedScale);
+      console.log('[IndoorMapView] Cover-scale calculated:', {
+        floorPlan: `${floorPlan.width}x${floorPlan.height}`,
+        viewport: `${viewportSize.width}x${viewportSize.height}`,
+        scaleX: scaleX.toFixed(3),
+        scaleY: scaleY.toFixed(3),
+        finalScale: calculatedScale.toFixed(3),
+      });
     }
-  }, [floorPlan?.url]);
+  }, [floorPlan?.url, viewportSize.width, viewportSize.height]);
 
-  // Calculate pan boundaries based on current scale (Issue #40)
-  const calculatePanBoundaries = (currentScale: number) => {
-    if (!floorPlan || !viewportSize.width || !viewportSize.height) {
-      return { minX: -Infinity, maxX: Infinity, minY: -Infinity, maxY: Infinity };
+  // Determine scroll direction based on which axis overflows
+  const scaledWidth = floorPlan ? floorPlan.width * scale : 0;
+  const scaledHeight = floorPlan ? floorPlan.height * scale : 0;
+  const needsVerticalScroll = scaledHeight > viewportSize.height;
+
+  // Auto-scroll to keep blue dot centered when position updates
+  useEffect(() => {
+    if (!isAutoFollowing || !scrollViewRef.current) return;
+    if (!floorPlan || userLocation.pixelX == null || userLocation.pixelY == null) return;
+    if (!viewportSize.width || !viewportSize.height) return;
+
+    // Debounce rapid position updates to prevent jitter
+    if (autoScrollTimer.current) {
+      clearTimeout(autoScrollTimer.current);
     }
 
-    const scaledWidth = floorPlan.width * currentScale;
-    const scaledHeight = floorPlan.height * currentScale;
+    autoScrollTimer.current = setTimeout(() => {
+      const scaledX = userLocation.pixelX * scale;
+      const scaledY = userLocation.pixelY * scale;
 
-    // Allow panning only while keeping some portion of map visible
-    const maxX = Math.max(0, (scaledWidth - viewportSize.width) / 2);
-    const minX = -maxX;
-    const maxY = Math.max(0, (scaledHeight - viewportSize.height) / 2);
-    const minY = -maxY;
+      if (needsVerticalScroll) {
+        // Portrait floor: scroll vertically, center blue dot in Y
+        const scrollY = Math.max(0, scaledY - (viewportSize.height / 2));
+        scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+      } else {
+        // Landscape floor: scroll horizontally, center blue dot in X
+        const scrollX = Math.max(0, scaledX - (viewportSize.width / 2));
+        scrollViewRef.current?.scrollTo({ x: scrollX, animated: true });
+      }
+    }, 150);
 
-    return { minX, maxX, minY, maxY };
-  };
+    return () => {
+      if (autoScrollTimer.current) {
+        clearTimeout(autoScrollTimer.current);
+      }
+    };
+  }, [userLocation.pixelX, userLocation.pixelY, scale, isAutoFollowing, viewportSize, floorPlan, needsVerticalScroll]);
 
-  const handlePanGestureEvent = (event) => {
-    const { translationX, translationY } = event.nativeEvent;
-    
-    // Calculate new position
-    const newX = lastTranslate.current.x + translationX;
-    const newY = lastTranslate.current.y + translationY;
-
-    // Enforce boundaries (Issue #40)
-    const boundaries = calculatePanBoundaries(lastScale.current);
-    const clampedX = Math.max(boundaries.minX, Math.min(boundaries.maxX, newX));
-    const clampedY = Math.max(boundaries.minY, Math.min(boundaries.maxY, newY));
-
-    translateX.setValue(clampedX);
-    translateY.setValue(clampedY);
-  };
-
-  const handlePanStateChange = (event) => {
-    const { state, translationX, translationY } = event.nativeEvent;
-    if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
-      // Calculate and clamp final position
-      const newX = lastTranslate.current.x + translationX;
-      const newY = lastTranslate.current.y + translationY;
-      
-      const boundaries = calculatePanBoundaries(lastScale.current);
-      const clampedX = Math.max(boundaries.minX, Math.min(boundaries.maxX, newX));
-      const clampedY = Math.max(boundaries.minY, Math.min(boundaries.maxY, newY));
-
-      lastTranslate.current = { x: clampedX, y: clampedY };
-    }
-  };
-
-  const handlePinchGestureEvent = (event) => {
-    const { scale: pinchScale } = event.nativeEvent;
-    let nextScale = lastScale.current * pinchScale;
-    nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale));
-    scale.setValue(nextScale);
-  };
-
-  const handlePinchStateChange = (event) => {
-    const { state, scale: pinchScale } = event.nativeEvent;
-    if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
-      let nextScale = lastScale.current * pinchScale;
-      nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale));
-      lastScale.current = nextScale;
-      scale.setValue(nextScale);
-    }
-  };
-
+  // Recenter: resume auto-follow and scroll to blue dot
   const handleRecenter = () => {
     if (!floorPlan || userLocation.pixelX == null || userLocation.pixelY == null) return;
     if (!viewportSize.width || !viewportSize.height) return;
 
-    // Use current scale (Issue #41 - improved scale tracking)
-    const s = lastScale.current;
-    const ux = userLocation.pixelX;
-    const uy = userLocation.pixelY;
+    console.log('[IndoorMapView] Recenter pressed - resuming auto-follow');
+    setIsAutoFollowing(true);
 
-    const cx = viewportSize.width / 2;
-    const cy = viewportSize.height / 2;
+    const scaledX = userLocation.pixelX * scale;
+    const scaledY = userLocation.pixelY * scale;
 
-    const targetTx = cx - s * ux;
-    const targetTy = cy - s * uy;
-
-    // Enforce boundaries even for recenter
-    const boundaries = calculatePanBoundaries(s);
-    const clampedTx = Math.max(boundaries.minX, Math.min(boundaries.maxX, targetTx));
-    const clampedTy = Math.max(boundaries.minY, Math.min(boundaries.maxY, targetTy));
-
-    Animated.parallel([
-      Animated.timing(translateX, {
-        toValue: clampedTx,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: clampedTy,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      lastTranslate.current = { x: clampedTx, y: clampedTy };
-    });
+    if (needsVerticalScroll) {
+      const scrollY = Math.max(0, scaledY - (viewportSize.height / 2));
+      scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+    } else {
+      const scrollX = Math.max(0, scaledX - (viewportSize.width / 2));
+      scrollViewRef.current?.scrollTo({ x: scrollX, animated: true });
+    }
   };
 
   if (!floorPlan) {
@@ -158,53 +113,69 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
 
   return (
     <View style={styles.viewport} onLayout={onViewportLayout}>
-      <PanGestureHandler
-        onGestureEvent={handlePanGestureEvent}
-        onHandlerStateChange={handlePanStateChange}
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal={!needsVerticalScroll}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => {
+          console.log('[IndoorMapView] Manual scroll - pausing auto-follow');
+          setIsAutoFollowing(false);
+        }}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // Center content on the non-scrolling axis
+          needsVerticalScroll
+            ? { alignItems: 'center' }
+            : { justifyContent: 'center' },
+        ]}
       >
-        <Animated.View style={styles.gestureWrapper}>
-          <PinchGestureHandler
-            onGestureEvent={handlePinchGestureEvent}
-            onHandlerStateChange={handlePinchStateChange}
-          >
-            <Animated.View
-              style={[
-                styles.mapContent,
-                {
-                  width: floorPlan.width,
-                  height: floorPlan.height,
-                  transform: [
-                    { translateX },
-                    { translateY },
-                    { scale },
-                  ],
-                },
-              ]}
-            >
-              <Image
-                source={{ uri: floorPlan.url }}
-                style={{ width: floorPlan.width, height: floorPlan.height }}
-              />
-              {userLocation.pixelX != null && userLocation.pixelY != null && (
-                <BlueDot 
-                  x={userLocation.pixelX} 
-                  y={userLocation.pixelY} 
-                  size={24}
-                  accuracy={userLocation.accuracy || 5}
-                />
-              )}
-            </Animated.View>
-          </PinchGestureHandler>
-        </Animated.View>
-      </PanGestureHandler>
+        <View
+          style={[
+            styles.mapContent,
+            {
+              width: scaledWidth,
+              height: scaledHeight,
+            },
+          ]}
+        >
+          <Image
+            source={{ uri: floorPlan.url }}
+            style={{ width: scaledWidth, height: scaledHeight }}
+            resizeMode="stretch"
+          />
+          {userLocation.pixelX != null && userLocation.pixelY != null && (
+            <BlueDot
+              x={userLocation.pixelX * scale}
+              y={userLocation.pixelY * scale}
+              size={24}
+              accuracy={userLocation.accuracy || 5}
+            />
+          )}
+        </View>
+      </ScrollView>
 
-      <TouchableOpacity 
-        style={styles.recenterButton} 
-        onPress={handleRecenter} 
+      <TouchableOpacity
+        style={[
+          styles.recenterButton,
+          isAutoFollowing && styles.recenterButtonActive,
+        ]}
+        onPress={handleRecenter}
         activeOpacity={0.8}
       >
-        <Icon name="target" size={20} color="#63b3ed" />
-        <Text style={styles.recenterText}>Recenter</Text>
+        <Icon
+          name={isAutoFollowing ? 'target-account' : 'target'}
+          size={20}
+          color={isAutoFollowing ? '#3b82f6' : '#63b3ed'}
+        />
+        <Text style={[
+          styles.recenterText,
+          isAutoFollowing && styles.recenterTextActive,
+        ]}>
+          {isAutoFollowing ? 'Following' : 'Recenter'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -216,20 +187,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 18,
   },
-  gestureWrapper: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
   },
   mapContent: {
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    position: 'relative',
   },
   recenterButton: {
     position: 'absolute',
-    top: 16,
+    bottom: 16,
     right: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 7,
+    minWidth: 120,
     backgroundColor: '#131c2c',
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -247,6 +219,13 @@ const styles = StyleSheet.create({
     color: '#e2e8f0',
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  recenterButtonActive: {
+    backgroundColor: '#131c2c',
+    borderColor: '#3b82f6',
+  },
+  recenterTextActive: {
+    color: '#3b82f6',
   },
 });
 

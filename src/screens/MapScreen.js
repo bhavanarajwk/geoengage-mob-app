@@ -30,9 +30,9 @@ import IndoorMapView from '../components/IndoorMapView';
 import { useCustomAlert } from '../components/CustomAlert';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// IndoorAtlas region types (from IARegion / native module). We only send events for floor and POI zones, not building (venue).
+// IndoorAtlas region types (from IARegion / native module). We only send events for POI zones, not floor or building.
 const REGION_TYPE_VENUE = 2;       // Building — do not trigger event or zone UI
-const REGION_TYPE_FLOOR_PLAN = 1;  // Floor — send event + zone UI
+const REGION_TYPE_FLOOR_PLAN = 1;  // Floor — no event, floor level shown via onLocationChanged
 const REGION_TYPE_POI = 99;        // Zone within floor (Pantry, Meeting Room, etc.) — send event + zone UI
 
 export default function MapScreen({ navigation }) {
@@ -430,17 +430,11 @@ export default function MapScreen({ navigation }) {
 
                     const regionType = region.type ?? -1;
 
-                    // Skip building (venue) — do not call event endpoint or show zone alert/banner
-                    if (regionType === REGION_TYPE_VENUE) {
+                    // Skip building (venue) and floor — only POI zones trigger events and zone UI
+                    // Floor level is shown separately via onLocationChanged data
+                    if (regionType !== REGION_TYPE_POI) {
                         return;
                     }
-
-                    // Only floor and POI zones trigger events and zone UI
-                    if (regionType !== REGION_TYPE_FLOOR_PLAN && regionType !== REGION_TYPE_POI) {
-                        return;
-                    }
-
-                    const eventType = regionType === REGION_TYPE_FLOOR_PLAN ? 'floor' : 'zone';
 
                     // eslint-disable-next-line no-console
                     console.log('[MapScreen] Geofence enter detected:', {
@@ -453,7 +447,7 @@ export default function MapScreen({ navigation }) {
                     if (ZoneService.shouldNotify(region.id)) {
                         ZoneService.markNotified(region.id);
                         ZoneService.saveZoneEntry({
-                            eventType,
+                            eventType: 'zone',
                             zoneId: region.id,
                             zoneName: region.name || 'Unknown Zone',
                             timestamp: Date.now(),
@@ -589,8 +583,8 @@ export default function MapScreen({ navigation }) {
             {/* ── Header ─────────────────────────────────────────────────── */}
             <Animated.View style={[styles.topBar, { opacity: headerFade }]}>
                 <View style={styles.userInfo}>
-                    <Text style={styles.greeting}>Hello, {firstName} 👋</Text>
-                    <Text style={styles.subGreeting}>Welcome back</Text>
+                    <Text style={styles.greeting}>GeoEngage</Text>
+                    <Text style={styles.subGreeting}>Hello, {firstName}</Text>
                 </View>
 
                 <View style={styles.headerActions}>
@@ -625,16 +619,6 @@ export default function MapScreen({ navigation }) {
 
             {/* ── Map container ─────────────────────────────────────────── */}
             <View style={styles.mapCard}>
-                {/* Map label */}
-                <View style={styles.mapLabel}>
-                    <Icon name="floor-plan" size={13} color="#63b3ed" />
-                    <Text style={styles.mapLabelText}>
-                        {floorPlan ? 'Live Floor Plan' : 'Floor Plan'}
-                        {currentFloorLevel !== null ? `  ·  Floor ${currentFloorLevel}` : ''}
-                    </Text>
-                    <View style={[styles.liveDot, hasLocationFix && styles.liveDotActive]} />
-                </View>
-
                 <View style={styles.mapContainer}>
                     {floorPlan ? (
                         <IndoorMapView
@@ -831,13 +815,14 @@ const styles = StyleSheet.create({
     },
     userInfo: { flex: 1 },
     greeting: {
-        fontSize: 19,
+        fontSize: 20,
         fontWeight: '700',
-        color: '#e2e8f0',
+        color: '#4285F4',
+        letterSpacing: 0.5,
     },
     subGreeting: {
-        fontSize: 12,
-        color: '#4a5568',
+        fontSize: 13,
+        color: '#94a3b8',
         marginTop: 2,
     },
     headerActions: {
