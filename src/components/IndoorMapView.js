@@ -158,12 +158,24 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
       </ScrollView>
 
       <TouchableOpacity
-        style={styles.recenterButton}
+        style={[
+          styles.recenterButton,
+          isAutoFollowing && styles.recenterButtonActive,
+        ]}
         onPress={handleRecenter}
         activeOpacity={0.8}
       >
-        <Icon name="target" size={20} color="#63b3ed" />
-        <Text style={styles.recenterText}>Recenter</Text>
+        <Icon
+          name={isAutoFollowing ? 'target-account' : 'target'}
+          size={20}
+          color={isAutoFollowing ? '#22c55e' : '#63b3ed'}
+        />
+        <Text style={[
+          styles.recenterText,
+          isAutoFollowing && styles.recenterTextActive,
+        ]}>
+          {isAutoFollowing ? 'Following' : 'Recenter'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -205,6 +217,13 @@ const styles = StyleSheet.create({
     color: '#e2e8f0',
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  recenterButtonActive: {
+    backgroundColor: '#1a3a2e',
+    borderColor: '#22c55e',
+  },
+  recenterTextActive: {
+    color: '#22c55e',
   },
 });
 
