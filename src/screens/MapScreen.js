@@ -38,6 +38,9 @@ const REGION_TYPE_POI = 99;        // Zone within floor (Pantry, Meeting Room, e
 export default function MapScreen({ navigation }) {
     const user = auth().currentUser;
 
+    // Debug: Log when MapScreen mounts
+    console.log('[MapScreen] Component mounted');
+
     // ── All state unchanged ───────────────────────────────────────────────────
     const [position, setPosition] = useState({ x: SCREEN_WIDTH / 2, y: 300 });
     const [floorPlan, setFloorPlan] = useState(null);
@@ -357,15 +360,24 @@ export default function MapScreen({ navigation }) {
         const requestLocationPermissions = async () => {
             if (Platform.OS !== 'android') return true;
             try {
+                console.log('[MapScreen] Requesting location permissions...');
 
                 const granted = await PermissionsAndroid.requestMultiple([
                     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
                     PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
                 ]);
+                
+                console.log('[MapScreen] Location permission result:', granted);
+                
                 const fineGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
                 const coarseGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
 
-                if (fineGranted || coarseGranted) return true;
+                if (fineGranted || coarseGranted) {
+                    console.log('[MapScreen] Location permission granted');
+                    return true;
+                }
+                
+                console.warn('[MapScreen] Location permission denied by user');
                 alert.show(
                     'Location Permission Required',
                     'Indoor positioning needs location access to show your position on the floor plan and detect when you enter zones.',
@@ -381,21 +393,33 @@ export default function MapScreen({ navigation }) {
                     ]
                 );
                 return false;
-            } catch (err) {  return false; }
+            } catch (err) {
+                console.error('[MapScreen] Error requesting location permissions:', err);
+                return false;
+            }
         };
 
         const initializeIndoorAtlas = async () => {
             try {
+                console.log('[MapScreen] Starting IndoorAtlas initialization...');
                 setIsInitializing(true);
+                
+                // Add 2-second delay to prevent permission dialog conflicts with FCM
+                console.log('[MapScreen] Waiting 2 seconds to avoid permission dialog conflicts...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
                 const hasPermissions = await requestLocationPermissions();
                 if (!hasPermissions) { 
+                    console.warn('[MapScreen] Location permissions not granted, stopping initialization');
                     setIsInitializing(false);
                     setPermissionDenied(true); // Track that permission was denied
                     setShowLocationWarning(true); // Show warning immediately when permission denied
                     return; 
                 }
 
+                console.log('[MapScreen] Initializing IndoorAtlas SDK...');
                 await IndoorAtlasService.initialize();
+                console.log('[MapScreen] IndoorAtlas SDK initialized successfully');
                 setIsInitializing(false);
 
                 floorPlanUnsubscribe = IndoorAtlasService.onFloorPlanChanged((fp) => { if (!isActive) return; setFloorPlan(fp); });
@@ -475,7 +499,7 @@ export default function MapScreen({ navigation }) {
                 }
 
             } catch (error) {
-
+                console.error('[MapScreen] Fatal error during IndoorAtlas initialization:', error);
                 setIsInitializing(false);
                 alert.show(
                     'Indoor Positioning Error',
@@ -485,6 +509,7 @@ export default function MapScreen({ navigation }) {
             }
         };
 
+        console.log('[MapScreen] Triggering initializeIndoorAtlas()');
         initializeIndoorAtlas();
 
         return () => {
