@@ -168,7 +168,7 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
         <Icon
           name={isAutoFollowing ? 'target-account' : 'target'}
           size={20}
-          color={isAutoFollowing ? '#22c55e' : '#63b3ed'}
+          color={isAutoFollowing ? '#3b82f6' : '#63b3ed'}
         />
         <Text style={[
           styles.recenterText,
@@ -195,11 +195,13 @@ const styles = StyleSheet.create({
   },
   recenterButton: {
     position: 'absolute',
-    top: 16,
+    bottom: 16,
     right: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 7,
+    minWidth: 120,
     backgroundColor: '#131c2c',
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -219,11 +221,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   recenterButtonActive: {
-    backgroundColor: '#1a3a2e',
-    borderColor: '#22c55e',
+    backgroundColor: '#131c2c',
+    borderColor: '#3b82f6',
   },
   recenterTextActive: {
-    color: '#22c55e',
+    color: '#3b82f6',
   },
 });
 

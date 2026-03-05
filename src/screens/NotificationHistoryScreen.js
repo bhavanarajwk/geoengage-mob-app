@@ -252,6 +252,10 @@ export default function NotificationHistoryScreen({ navigation }) {
         setSelectedIds(new Set(allKeys));
     };
 
+    const handleDeselectAll = () => {
+        setSelectedIds(new Set());
+    };
+
     // ─── RENDER ───────────────────────────────────────────────────────────────
 
     const renderHistoryItem = ({ item, index }) => {
@@ -362,24 +366,15 @@ export default function NotificationHistoryScreen({ navigation }) {
                 <View style={styles.headerRight}>
                     {selectionMode && (
                         <TouchableOpacity
-                            onPress={allSelected ? exitSelectionMode : handleSelectAll}
-                            style={[styles.headerBtn, styles.headerBtnSpaced]}
+                            onPress={allSelected ? handleDeselectAll : handleSelectAll}
+                            style={[styles.headerBtn, styles.selectAllButton, styles.headerBtnSpaced]}
                         >
-                            <Text style={styles.selectAllText}>
-                                {allSelected ? 'None' : 'All'}
+                            <Text style={styles.selectAllText} numberOfLines={1}>
+                                {allSelected ? 'Deselect All' : 'Select All'}
                             </Text>
                         </TouchableOpacity>
                     )}
-                    {history.length > 0 && (
-                        <TouchableOpacity
-                            onPress={handleClearHistory}
-                            style={styles.headerBtn}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                            <Icon name="delete-outline" size={22} color="#ef4444" />
-                        </TouchableOpacity>
-                    )}
-                    {history.length === 0 && <View style={styles.headerSpacer} />}
+                    {!selectionMode && history.length === 0 && <View style={styles.headerSpacer} />}
                 </View>
             </View>
 
@@ -507,6 +502,11 @@ const styles = StyleSheet.create({
     headerBtnSpaced: {
         marginRight: 4,
     },
+    selectAllButton: {
+        width: 'auto',
+        paddingHorizontal: 8,
+        minWidth: 90,
+    },
     headerRight: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -524,6 +524,7 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         color: '#63b3ed',
+        textAlign: 'center',
     },
 
     // ── Count row ──
