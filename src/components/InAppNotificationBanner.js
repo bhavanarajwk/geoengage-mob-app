@@ -73,7 +73,7 @@ export default function InAppNotificationBanner({
                     </Text>
                     {!!banner.zoneName && (
                         <View style={styles.metaRow}>
-                            <Icon name="map-marker" size={12} color="#93c5fd" />
+                            <Icon name="map-marker" size={12} color="#64748b" />
                             <Text style={styles.metaText}>
                                 {banner.zoneName}
                                 {banner.floor != null ? ` · Floor ${banner.floor}` : ''}
@@ -104,17 +104,17 @@ const styles = StyleSheet.create({
     },
     content: {
         borderRadius: 16,
-        backgroundColor: '#1d4ed8', // brighter blue to stand out from background
+        backgroundColor: '#161b22',
         borderWidth: 1,
-        borderColor: '#60a5fa',
+        borderColor: '#30363d',
         paddingVertical: 20,
         paddingHorizontal: 16,
         flexDirection: 'row',
         alignItems: 'center',
         shadowColor: '#000',
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
-        elevation: 8,
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 10,
     },
     textWrap: {
         flex: 1,
@@ -123,12 +123,12 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 17,
         fontWeight: '700',
-        color: '#f9fafb',
+        color: '#e2e8f0',
         marginBottom: 2,
     },
     message: {
         fontSize: 14,
-        color: '#e5efff',
+        color: '#94a3b8',
     },
     metaRow: {
         flexDirection: 'row',
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     },
     metaText: {
         fontSize: 11,
-        color: '#93c5fd',
+        color: '#64748b',
     },
     actions: {
         flexDirection: 'row',
@@ -152,18 +152,18 @@ const styles = StyleSheet.create({
     },
     actionGhostText: {
         fontSize: 11,
-        color: '#9ca3af',
+        color: '#64748b',
         fontWeight: '500',
     },
     actionPrimary: {
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 999,
-        backgroundColor: '#2563eb',
+        backgroundColor: '#3b82f6',
     },
     actionPrimaryText: {
         fontSize: 11,
-        color: '#e5e7eb',
+        color: '#ffffff',
         fontWeight: '600',
     },
 });
