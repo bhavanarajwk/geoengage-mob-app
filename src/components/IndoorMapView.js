@@ -23,7 +23,9 @@ type Props = {
 export default function IndoorMapView({ floorPlan, userLocation }: Props) {
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [scale, setScale] = useState(1);
+  const [isAutoFollowing, setIsAutoFollowing] = useState(true);
   const scrollViewRef = useRef(null);
+  const autoScrollTimer = useRef(null);
 
   const onViewportLayout = (event) => {
     const { width, height } = event.nativeEvent.layout;
@@ -51,6 +53,39 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
   const scaledWidth = floorPlan ? floorPlan.width * scale : 0;
   const scaledHeight = floorPlan ? floorPlan.height * scale : 0;
   const needsVerticalScroll = scaledHeight > viewportSize.height;
+
+  // Auto-scroll to keep blue dot centered when position updates
+  useEffect(() => {
+    if (!isAutoFollowing || !scrollViewRef.current) return;
+    if (!floorPlan || userLocation.pixelX == null || userLocation.pixelY == null) return;
+    if (!viewportSize.width || !viewportSize.height) return;
+
+    // Debounce rapid position updates to prevent jitter
+    if (autoScrollTimer.current) {
+      clearTimeout(autoScrollTimer.current);
+    }
+
+    autoScrollTimer.current = setTimeout(() => {
+      const scaledX = userLocation.pixelX * scale;
+      const scaledY = userLocation.pixelY * scale;
+
+      if (needsVerticalScroll) {
+        // Portrait floor: scroll vertically, center blue dot in Y
+        const scrollY = Math.max(0, scaledY - (viewportSize.height / 2));
+        scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+      } else {
+        // Landscape floor: scroll horizontally, center blue dot in X
+        const scrollX = Math.max(0, scaledX - (viewportSize.width / 2));
+        scrollViewRef.current?.scrollTo({ x: scrollX, animated: true });
+      }
+    }, 150);
+
+    return () => {
+      if (autoScrollTimer.current) {
+        clearTimeout(autoScrollTimer.current);
+      }
+    };
+  }, [userLocation.pixelX, userLocation.pixelY, scale, isAutoFollowing, viewportSize, floorPlan, needsVerticalScroll]);
 
   // Recenter placeholder — will be implemented in Commit 3
   const handleRecenter = () => {
