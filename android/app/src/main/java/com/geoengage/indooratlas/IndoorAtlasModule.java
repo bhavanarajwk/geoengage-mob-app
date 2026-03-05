@@ -195,6 +195,7 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                 }
                 
                 isPositioning = false;
+                currentFloorPlanId = null;  // Reset so floor plan event fires on restart
                 
                 Log.d(TAG, "Positioning stopped");
                 promise.resolve(true);
