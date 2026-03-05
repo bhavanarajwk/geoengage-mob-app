@@ -583,8 +583,8 @@ export default function MapScreen({ navigation }) {
             {/* ── Header ─────────────────────────────────────────────────── */}
             <Animated.View style={[styles.topBar, { opacity: headerFade }]}>
                 <View style={styles.userInfo}>
-                    <Text style={styles.greeting}>Hello, {firstName} 👋</Text>
-                    <Text style={styles.subGreeting}>Welcome back</Text>
+                    <Text style={styles.greeting}>GeoEngage</Text>
+                    <Text style={styles.subGreeting}>Hello, {firstName}</Text>
                 </View>
 
                 <View style={styles.headerActions}>
@@ -619,16 +619,6 @@ export default function MapScreen({ navigation }) {
 
             {/* ── Map container ─────────────────────────────────────────── */}
             <View style={styles.mapCard}>
-                {/* Map label */}
-                <View style={styles.mapLabel}>
-                    <Icon name="floor-plan" size={13} color="#63b3ed" />
-                    <Text style={styles.mapLabelText}>
-                        {floorPlan ? 'Live Floor Plan' : 'Floor Plan'}
-                        {currentFloorLevel !== null ? `  ·  Floor ${currentFloorLevel}` : ''}
-                    </Text>
-                    <View style={[styles.liveDot, hasLocationFix && styles.liveDotActive]} />
-                </View>
-
                 <View style={styles.mapContainer}>
                     {floorPlan ? (
                         <IndoorMapView
@@ -825,13 +815,14 @@ const styles = StyleSheet.create({
     },
     userInfo: { flex: 1 },
     greeting: {
-        fontSize: 19,
+        fontSize: 20,
         fontWeight: '700',
-        color: '#e2e8f0',
+        color: '#4285F4',
+        letterSpacing: 0.5,
     },
     subGreeting: {
-        fontSize: 12,
-        color: '#4a5568',
+        fontSize: 13,
+        color: '#94a3b8',
         marginTop: 2,
     },
     headerActions: {
