@@ -527,7 +527,7 @@ export default function MapScreen({ navigation }) {
         try {
             await ZoneService.saveZoneEntry({
                 eventType: 'zone',
-                zoneId: 'cebf6bb0-126e-11f1-badb-c35cc3d92253',
+                zoneId: 'c019c310-18bf-11f1-8bc0-556741431fe0',
                 zoneName: 'Conference Room',
                 timestamp: Date.now(),
                 floorLevel: 2,
