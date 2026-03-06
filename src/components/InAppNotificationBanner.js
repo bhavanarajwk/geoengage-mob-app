@@ -68,7 +68,7 @@ export default function InAppNotificationBanner({
                     <Text style={styles.title} numberOfLines={1}>
                         {banner.title}
                     </Text>
-                    <Text style={styles.message} numberOfLines={2}>
+                    <Text style={styles.message} numberOfLines={3}>
                         {banner.message}
                     </Text>
                     {!!banner.zoneName && (

@@ -27,6 +27,7 @@ export default function NotificationHistoryScreen({ navigation }) {
     // Multi-select state
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
+    const [expandedIds, setExpandedIds] = useState(new Set());
     const alert = useCustomAlert();
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -256,17 +257,36 @@ export default function NotificationHistoryScreen({ navigation }) {
         setSelectedIds(new Set());
     };
 
+    const toggleExpanded = (itemKey) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(itemKey)) {
+                next.delete(itemKey);
+            } else {
+                next.add(itemKey);
+            }
+            return next;
+        });
+    };
+
     // ─── RENDER ───────────────────────────────────────────────────────────────
 
     const renderHistoryItem = ({ item, index }) => {
         const itemKey = item.id;
         const isSelected = selectedIds.has(itemKey);
         const isDeleting = deletingIds.has(itemKey);
+        const isExpanded = expandedIds.has(itemKey);
 
         return (
             <Pressable
                 onLongPress={() => handleLongPress(itemKey)}
-                onPress={() => selectionMode && handleTapInSelection(itemKey)}
+                onPress={() => {
+                    if (selectionMode) {
+                        handleTapInSelection(itemKey);
+                    } else {
+                        toggleExpanded(itemKey);
+                    }
+                }}
                 android_ripple={{ color: 'rgba(99, 179, 237, 0.08)' }}
                 style={[
                     styles.historyItem,
@@ -300,7 +320,7 @@ export default function NotificationHistoryScreen({ navigation }) {
                         {item.zoneName || item.title || 'GeoEngage'}
                     </Text>
                     {!!item.message && (
-                        <Text style={styles.messageText} numberOfLines={2}>
+                        <Text style={styles.messageText} numberOfLines={isExpanded ? undefined : 2}>
                             {item.message}
                         </Text>
                     )}
