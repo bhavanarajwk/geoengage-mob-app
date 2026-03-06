@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import APIService from './APIService';
 
 const STORAGE_KEY = '@zone_history';
-const COOLDOWN_SECONDS = 60; // Don't notify about same zone within 60 seconds
+const COOLDOWN_SECONDS = 0; // Cooldown disabled for testing - change back to 60 for production
 
 class ZoneService {
   static instance = null;
@@ -65,6 +65,95 @@ class ZoneService {
     const now = Date.now();
     this.lastNotified.set(zoneId, now);
     console.log(`[ZoneService] Cooldown started for zone: ${zoneId} (${COOLDOWN_SECONDS}s)`);
+  }
+
+  /**
+   * Send zone exit event to backend (fire-and-forget)
+   * Called when user exits a zone - notifies backend to check for exit campaigns
+   *
+   * @param {Object} entry - Exit data
+   * @param {string} entry.zoneId - Zone UUID
+   * @param {string} entry.zoneName - Zone display name
+   * @param {number} entry.floorLevel - Floor level
+   * @returns {Promise<void>}
+   */
+  async saveZoneExit(entry) {
+    try {
+      const floorId = entry.floorLevel !== null && entry.floorLevel !== undefined
+        ? entry.floorLevel
+        : 1;
+
+      const payload = {
+        event_type: 'zone_exit',
+        zone_id: entry.zoneId,
+        zone_name: entry.zoneName || 'Unknown Zone',
+        floor_id: floorId,
+      };
+
+      console.log('[ZoneService] Sending zone exit event to backend:', payload);
+      const response = await APIService.post('/api/v1/event', payload);
+      console.log('[ZoneService] Zone exit event sent successfully:', response.data);
+
+    } catch (error) {
+      // Fire-and-forget pattern: log error but don't throw
+      // Exit events should not block UI or cause user-facing errors
+      console.error('[ZoneService] Failed to send zone exit event:', {
+        error: error.message,
+        status: error.response?.status,
+        zoneId: entry.zoneId,
+        zoneName: entry.zoneName,
+      });
+
+      if (error.response?.status === 401) {
+        console.warn('[ZoneService] Authentication error on zone exit - user token may be expired');
+      }
+    }
+  }
+
+  /**
+   * Record a transaction for the user in a zone
+   * Called when user taps "Record Transaction" button while in a zone
+   * This marks the user's zone session as has_transaction = true on backend
+   * preventing exit-without-transaction notifications
+   *
+   * @param {Object} zoneData - Zone data
+   * @param {string} zoneData.zoneId - Zone UUID
+   * @param {string} zoneData.zoneName - Zone display name
+   * @param {number} zoneData.floorLevel - Floor level
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async recordTransaction(zoneData) {
+    try {
+      const floorId = zoneData.floorLevel !== null && zoneData.floorLevel !== undefined
+        ? zoneData.floorLevel
+        : 1;
+
+      const payload = {
+        zone_id: zoneData.zoneId,
+        zone_name: zoneData.zoneName || 'Unknown Zone',
+        floor_id: floorId,
+      };
+
+      console.log('[ZoneService] Recording transaction:', payload);
+      const response = await APIService.post('/api/v1/transactions', payload);
+      console.log('[ZoneService] Transaction recorded successfully:', response.data);
+
+      return { success: true };
+
+    } catch (error) {
+      const errorMessage = error.response?.data?.detail
+        || error.response?.data?.error
+        || error.message
+        || 'Failed to record transaction';
+
+      console.error('[ZoneService] Failed to record transaction:', {
+        error: errorMessage,
+        status: error.response?.status,
+        zoneId: zoneData.zoneId,
+      });
+
+      return { success: false, error: errorMessage };
+    }
   }
 
   /**

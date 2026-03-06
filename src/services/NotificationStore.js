@@ -136,6 +136,9 @@ const NotificationStore = {
             receivedAt: raw.receivedAt || now,
             read: !!raw.read,
             clicked: !!raw.clicked,
+            // NEW: Notification type and offer name for exit campaign styling
+            notificationType: raw.notificationType || 'zone_entry',  // "zone_entry" or "zone_exit_no_txn"
+            offerName: raw.offerName || '',  // Offer name for exit campaigns
         };
 
         const existingIndex = cache.findIndex((n) => n.id === id);

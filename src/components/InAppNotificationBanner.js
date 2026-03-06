@@ -68,6 +68,11 @@ export default function InAppNotificationBanner({
                     <Text style={styles.title} numberOfLines={1}>
                         {banner.title}
                     </Text>
+                    {!!banner.offerName && (
+                        <Text style={styles.offerName} numberOfLines={1}>
+                            {banner.offerName}
+                        </Text>
+                    )}
                     <Text style={styles.message} numberOfLines={3}>
                         {banner.message}
                     </Text>
@@ -129,6 +134,12 @@ const styles = StyleSheet.create({
     message: {
         fontSize: 14,
         color: '#94a3b8',
+    },
+    offerName: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#4285F4',
+        marginBottom: 2,
     },
     metaRow: {
         flexDirection: 'row',
