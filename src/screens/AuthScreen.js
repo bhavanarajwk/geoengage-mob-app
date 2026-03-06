@@ -15,7 +15,8 @@ import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-nati
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import auth from '@react-native-firebase/auth';
 import { statusCodes } from '@react-native-google-signin/google-signin';
-import { signInWithGoogle } from '../services/AuthService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signInWithGoogle, signOut } from '../services/AuthService';
 import FCMService from '../services/FCMService';
 import APIService from '../services/APIService';
 import { useCustomAlert } from '../components/CustomAlert';
@@ -109,6 +110,9 @@ export default function AuthScreen() {
     const handleGoogleSignIn = async () => {
         setLoading(true);
         try {
+            // Set flag to prevent navigation until server validation completes
+            await AsyncStorage.setItem('pendingServerValidation', 'true');
+            
             const authResult = await signInWithGoogle();
 
             console.log('[AuthScreen] Firebase user UID:', authResult.user?.uid);
@@ -143,6 +147,7 @@ export default function AuthScreen() {
             const fcmToken = await FCMService.requestPermissionAndGetToken();
 
             if (fcmToken) {
+                console.log('[AuthScreen] FCM token:', fcmToken);
                 console.log('[AuthScreen] FCM token obtained, registering with backend...');
                 
                 // Use the new registration method with retry logic
@@ -150,18 +155,28 @@ export default function AuthScreen() {
                 
                 if (success) {
                     console.log('[AuthScreen] Device registered successfully');
+                    // Clear flag - allow navigation to MapScreen
+                    await AsyncStorage.removeItem('pendingServerValidation');
                 } else {
                     console.error('[AuthScreen] Device registration failed after retries');
+                    
+                    // Clear flag before signOut
+                    await AsyncStorage.removeItem('pendingServerValidation');
+                    
+                    // Sign out user immediately before showing alert
+                    await signOut();
+                    
                     alert.show(
-                        'Notification Setup Issue',
-                        'You are signed in, but notifications may not work properly. Please check your connection.',
-                        [{ text: 'OK' }]
+                        'Unable to Connect',
+                        'Could not connect to the server. Please check your connection and try again later.',
+                        [{ text: 'OK', style: 'primary' }]
                     );
                 }
             } else {
                 console.warn('[AuthScreen] No FCM token - user may have denied notification permission');
                 // User denied notification permission or error occurred
-                // Don't show alert since this is a valid user choice
+                // Clear flag - allow navigation even without FCM
+                await AsyncStorage.removeItem('pendingServerValidation');
             }
         } catch (error) {
             console.error('[AuthScreen] Sign-in error:', error);
@@ -215,6 +230,8 @@ export default function AuthScreen() {
 
             alert.show(title, message);
         } finally {
+            // Always clear flag on error/completion
+            await AsyncStorage.removeItem('pendingServerValidation');
             setLoading(false);
         }
     };

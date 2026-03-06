@@ -19,6 +19,7 @@ export default function AppNavigator() {
     const [initializing, setInitializing] = useState(true);
     const [showSplash, setShowSplash] = useState(true);
     const [isFirstLaunch, setIsFirstLaunch] = useState(null);
+    const [pendingValidation, setPendingValidation] = useState(false);
 
     useEffect(() => {
         // Configure Google Sign-In FIRST — must happen before any signIn() call
@@ -42,6 +43,10 @@ export default function AppNavigator() {
                 if (firebaseUser) {
                     console.log('[AppNavigator] User authenticated:', firebaseUser.uid);
 
+                    // Check if server validation is pending (new sign-in in progress)
+                    const pending = await AsyncStorage.getItem('pendingServerValidation');
+                    setPendingValidation(pending === 'true');
+
                     // Get fresh ID token with error handling
                     try {
                         const idToken = await firebaseUser.getIdToken();
@@ -53,6 +58,7 @@ export default function AppNavigator() {
                     }
                 } else {
                     console.log('[AppNavigator] User signed out');
+                    setPendingValidation(false);
                 }
 
                 // Always update user state, even if token fetch failed
@@ -77,6 +83,23 @@ export default function AppNavigator() {
         return unsubscribe; // Unsubscribe on unmount
     }, [initializing]);
 
+    // Poll for pendingValidation flag to be cleared by AuthScreen
+    useEffect(() => {
+        if (!pendingValidation || !user) return;
+
+        const checkValidation = async () => {
+            const pending = await AsyncStorage.getItem('pendingServerValidation');
+            if (pending !== 'true') {
+                console.log('[AppNavigator] Server validation completed, clearing pendingValidation');
+                setPendingValidation(false);
+            }
+        };
+
+        // Check every 500ms
+        const interval = setInterval(checkValidation, 500);
+        return () => clearInterval(interval);
+    }, [pendingValidation, user]);
+
     // Handle splash completion - memoized to prevent re-renders
     const handleSplashComplete = useCallback(() => {
         setShowSplash(false);
@@ -95,8 +118,8 @@ export default function AppNavigator() {
     return (
         <NavigationContainer>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
-                {user ? (
-                    // Authenticated stack
+                {user && !pendingValidation ? (
+                    // Authenticated stack - only show after server validation completes
                     <>
                         <Stack.Screen name="Map" component={MapScreen} />
                         <Stack.Screen

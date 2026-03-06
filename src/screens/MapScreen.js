@@ -38,9 +38,6 @@ const REGION_TYPE_POI = 99;        // Zone within floor (Pantry, Meeting Room, e
 export default function MapScreen({ navigation }) {
     const user = auth().currentUser;
 
-    // Debug: Log when MapScreen mounts
-    console.log('[MapScreen] Component mounted');
-
     // ── All state unchanged ───────────────────────────────────────────────────
     const [position, setPosition] = useState({ x: SCREEN_WIDTH / 2, y: 300 });
     const [floorPlan, setFloorPlan] = useState(null);
@@ -84,6 +81,14 @@ export default function MapScreen({ navigation }) {
 
     useEffect(() => { hasLocationFixRef.current = hasLocationFix; }, [hasLocationFix]);
     useEffect(() => { currentZoneRef.current = currentZone; }, [currentZone]);
+
+    // Log positioning accuracy every 20 seconds for debugging
+    useEffect(() => {
+        const interval = setInterval(() => {
+            console.log('[MapScreen] Positioning accuracy:', accuracy, 'meters');
+        }, 20000);
+        return () => clearInterval(interval);
+    }, [accuracy]);
 
     // Animate zone banner in/out
     useEffect(() => {
@@ -427,6 +432,8 @@ export default function MapScreen({ navigation }) {
 
                 geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
                     if (!isActive) return;
+
+                    console.log('[MapScreen] Raw geofence data from SDK:', JSON.stringify(region));
 
                     const regionType = region.type ?? -1;
 
