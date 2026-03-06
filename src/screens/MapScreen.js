@@ -469,6 +469,22 @@ export default function MapScreen({ navigation }) {
                     if (!isActive) return;
 
                     if (currentZoneRef.current && currentZoneRef.current.id === region.id) {
+                        // Send zone exit event to backend (fire-and-forget)
+                        // This allows backend to trigger exit campaigns if applicable
+                        console.log('[MapScreen] Geofence exit detected:', {
+                            zoneId: currentZoneRef.current.id,
+                            zoneName: currentZoneRef.current.name,
+                            floorLevel: currentFloorLevelRef.current,
+                        });
+
+                        ZoneService.saveZoneExit({
+                            zoneId: currentZoneRef.current.id,
+                            zoneName: currentZoneRef.current.name,
+                            floorLevel: currentFloorLevelRef.current,
+                        }).catch(() => {
+                            // Errors already logged in saveZoneExit, swallow here
+                        });
+
                         setCurrentZone(null);
                         ZoneService.setCurrentZone(null);
                     }

@@ -68,6 +68,49 @@ class ZoneService {
   }
 
   /**
+   * Send zone exit event to backend (fire-and-forget)
+   * Called when user exits a zone - notifies backend to check for exit campaigns
+   *
+   * @param {Object} entry - Exit data
+   * @param {string} entry.zoneId - Zone UUID
+   * @param {string} entry.zoneName - Zone display name
+   * @param {number} entry.floorLevel - Floor level
+   * @returns {Promise<void>}
+   */
+  async saveZoneExit(entry) {
+    try {
+      const floorId = entry.floorLevel !== null && entry.floorLevel !== undefined
+        ? entry.floorLevel
+        : 1;
+
+      const payload = {
+        event_type: 'zone_exit',
+        zone_id: entry.zoneId,
+        zone_name: entry.zoneName || 'Unknown Zone',
+        floor_id: floorId,
+      };
+
+      console.log('[ZoneService] Sending zone exit event to backend:', payload);
+      const response = await APIService.post('/api/v1/event', payload);
+      console.log('[ZoneService] Zone exit event sent successfully:', response.data);
+
+    } catch (error) {
+      // Fire-and-forget pattern: log error but don't throw
+      // Exit events should not block UI or cause user-facing errors
+      console.error('[ZoneService] Failed to send zone exit event:', {
+        error: error.message,
+        status: error.response?.status,
+        zoneId: entry.zoneId,
+        zoneName: entry.zoneName,
+      });
+
+      if (error.response?.status === 401) {
+        console.warn('[ZoneService] Authentication error on zone exit - user token may be expired');
+      }
+    }
+  }
+
+  /**
    * Save floor/zone entry to persistent storage AND send to backend
    *
    * @param {Object} entry - Entry data
