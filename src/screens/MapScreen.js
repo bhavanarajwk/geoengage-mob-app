@@ -55,6 +55,12 @@ export default function MapScreen({ navigation }) {
     const [accuracy, setAccuracy] = useState(5);
     const alert = useCustomAlert();
 
+    // Transaction button state
+    const [transactionRecorded, setTransactionRecorded] = useState(false);
+    const [transactionLoading, setTransactionLoading] = useState(false);
+    const [showTransactionSuccess, setShowTransactionSuccess] = useState(false);
+    const transactionFabAnim = useRef(new Animated.Value(0)).current;
+
     const floorPlanRef = useRef(null);
     const hasLocationFixRef = useRef(false);
     const currentZoneRef = useRef(null);
@@ -99,6 +105,29 @@ export default function MapScreen({ navigation }) {
             friction: 11,
         }).start();
     }, [currentZone]);
+
+    // Reset transaction state when entering a new zone
+    useEffect(() => {
+        if (currentZone) {
+            // New zone entered - reset transaction state
+            setTransactionRecorded(false);
+            setShowTransactionSuccess(false);
+            // Animate FAB in
+            Animated.spring(transactionFabAnim, {
+                toValue: 1,
+                useNativeDriver: true,
+                tension: 70,
+                friction: 10,
+            }).start();
+        } else {
+            // Exited zone - hide FAB
+            Animated.timing(transactionFabAnim, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }).start();
+        }
+    }, [currentZone?.id]);
 
     // Header fade in
     useEffect(() => {
@@ -539,6 +568,52 @@ export default function MapScreen({ navigation }) {
         };
     }, []);
 
+    // Handle transaction button press
+    const handleRecordTransaction = async () => {
+        if (!currentZone || transactionRecorded || transactionLoading) return;
+
+        setTransactionLoading(true);
+
+        try {
+            const result = await ZoneService.recordTransaction({
+                zoneId: currentZone.id,
+                zoneName: currentZone.name,
+                floorLevel: currentFloorLevel,
+            });
+
+            if (result.success) {
+                setTransactionRecorded(true);
+                setShowTransactionSuccess(true);
+                console.log('[MapScreen] Transaction recorded successfully');
+
+                // Hide success message and FAB after 2 seconds
+                setTimeout(() => {
+                    setShowTransactionSuccess(false);
+                    Animated.timing(transactionFabAnim, {
+                        toValue: 0,
+                        duration: 300,
+                        useNativeDriver: true,
+                    }).start();
+                }, 2000);
+            } else {
+                alert.show(
+                    'Transaction Failed',
+                    result.error || 'Could not record transaction. Please try again.',
+                    [{ text: 'OK', style: 'primary' }]
+                );
+            }
+        } catch (error) {
+            console.error('[MapScreen] Transaction error:', error);
+            alert.show(
+                'Transaction Error',
+                'An unexpected error occurred. Please try again.',
+                [{ text: 'OK', style: 'primary' }]
+            );
+        } finally {
+            setTransactionLoading(false);
+        }
+    };
+
     const handleSimulateConferenceZone = async () => {
         try {
             await ZoneService.saveZoneEntry({
@@ -770,6 +845,60 @@ export default function MapScreen({ navigation }) {
                     )}
                 </View>
             </View>
+
+            {/* ── Transaction Floating Action Button ─────────────────────── */}
+            {currentZone && !transactionRecorded && (
+                <Animated.View
+                    style={[
+                        styles.transactionFab,
+                        {
+                            opacity: transactionFabAnim,
+                            transform: [{
+                                scale: transactionFabAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0.8, 1],
+                                }),
+                            }, {
+                                translateY: transactionFabAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [20, 0],
+                                }),
+                            }],
+                        },
+                    ]}
+                >
+                    <TouchableOpacity
+                        style={styles.transactionFabButton}
+                        onPress={handleRecordTransaction}
+                        disabled={transactionLoading}
+                        activeOpacity={0.85}
+                    >
+                        {transactionLoading ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                            <Icon name="cart-check" size={20} color="#ffffff" />
+                        )}
+                        <Text style={styles.transactionFabText}>
+                            {transactionLoading ? 'Recording...' : 'Record Transaction'}
+                        </Text>
+                    </TouchableOpacity>
+                </Animated.View>
+            )}
+
+            {/* ── Transaction Success Toast ──────────────────────────────── */}
+            {showTransactionSuccess && (
+                <Animated.View
+                    style={[
+                        styles.transactionSuccessToast,
+                        {
+                            opacity: transactionFabAnim,
+                        },
+                    ]}
+                >
+                    <Icon name="check-circle" size={20} color="#22c55e" />
+                    <Text style={styles.transactionSuccessText}>Transaction Complete</Text>
+                </Animated.View>
+            )}
 
             {/* ── Status chips ────────────────────────────────────────────── */}
             <View style={styles.statusRow}>
@@ -1280,5 +1409,50 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#e2e8f0',
         fontWeight: '500',
+    },
+
+    // ── Transaction FAB ──
+    transactionFab: {
+        alignSelf: 'center',
+        marginBottom: 12,
+    },
+    transactionFabButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: '#4285F4',
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        borderRadius: 28,
+        elevation: 6,
+        shadowColor: '#4285F4',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+    },
+    transactionFabText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#ffffff',
+        letterSpacing: 0.3,
+    },
+    transactionSuccessToast: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        alignSelf: 'center',
+        backgroundColor: 'rgba(34, 197, 94, 0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(34, 197, 94, 0.3)',
+        paddingHorizontal: 18,
+        paddingVertical: 12,
+        borderRadius: 24,
+        marginBottom: 12,
+    },
+    transactionSuccessText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#22c55e',
     },
 }); 
