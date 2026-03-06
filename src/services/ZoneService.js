@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import APIService from './APIService';
 
 const STORAGE_KEY = '@zone_history';
-const COOLDOWN_SECONDS = 60; // Don't notify about same zone within 60 seconds
+const COOLDOWN_SECONDS = 0; // Cooldown disabled for testing - change back to 60 for production
 
 class ZoneService {
   static instance = null;

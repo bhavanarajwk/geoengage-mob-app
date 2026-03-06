@@ -319,6 +319,11 @@ export default function NotificationHistoryScreen({ navigation }) {
                     <Text style={[styles.zoneName, !item.read && styles.zoneNameUnread]} numberOfLines={1}>
                         {item.zoneName || item.title || 'GeoEngage'}
                     </Text>
+                    {!!item.offerName && (
+                        <Text style={styles.offerNameText} numberOfLines={1}>
+                            {item.offerName}
+                        </Text>
+                    )}
                     {!!item.message && (
                         <Text style={styles.messageText} numberOfLines={isExpanded ? undefined : 2}>
                             {item.message}
@@ -652,6 +657,12 @@ const styles = StyleSheet.create({
     messageText: {
         fontSize: 13,
         color: '#9ca3af',
+        marginBottom: 4,
+    },
+    offerNameText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#4285F4',
         marginBottom: 4,
     },
     historyMeta: {

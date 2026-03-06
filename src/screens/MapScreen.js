@@ -281,6 +281,19 @@ export default function MapScreen({ navigation }) {
             const floor = data.floor_id ? parseInt(data.floor_id, 10) : null;
             const notificationId = data.notification_id || null;
 
+            // NEW: Parse notification type and offer name from FCM data
+            // type: "zone_entry" (default) or "zone_exit_no_txn"
+            // offer_name: optional offer name for exit campaigns
+            const notificationType = data.type || 'zone_entry';
+            const offerName = data.offer_name || '';
+
+            console.log('[MapScreen] FCM notification received:', {
+                notificationType,
+                offerName,
+                campaignId,
+                zoneName,
+            });
+
             const stored = await NotificationStore.addNotification({
                 id: remoteMessage.messageId,
                 campaignId,
@@ -293,6 +306,8 @@ export default function MapScreen({ navigation }) {
                 read: !!openedFromNotification,
                 clicked: !!openedFromNotification,
                 messageId: remoteMessage.messageId,
+                notificationType,
+                offerName,
             });
 
             if (openedFromNotification) {
