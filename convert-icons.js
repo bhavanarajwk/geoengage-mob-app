@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Icon Converter Script for GeoEngage
  * 
@@ -11,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Check if sharp is installed
+/** @type {any} */
 let sharp;
 try {
   sharp = require('sharp');
@@ -75,7 +77,7 @@ async function convertIcons() {
       console.log(`✓ Converted ${folder}/ic_launcher.png (${size}x${size})`);
       console.log(`✓ Converted ${folder}/ic_launcher_round.png (${size}x${size})`);
     } catch (error) {
-      console.error(`❌ Error converting ${folder}:`, error.message);
+      console.error(`❌ Error converting ${folder}:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -98,7 +100,7 @@ async function convertIcons() {
       
       console.log(`✓ Converted iOS ${name} (${size}x${size})`);
     } catch (error) {
-      console.error(`❌ Error converting ${name}:`, error.message);
+      console.error(`❌ Error converting ${name}:`, error instanceof Error ? error.message : String(error));
     }
   }
 

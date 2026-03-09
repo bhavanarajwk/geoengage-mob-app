@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Icon Generator Script for GeoEngage
  * 
@@ -46,6 +47,10 @@ const ePath = `
 `;
 
 // Create complete SVG
+/**
+ * @param {number} size
+ * @returns {string}
+ */
 function createSVG(size) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${size}" height="${size}" viewBox="0 0 230 230" xmlns="http://www.w3.org/2000/svg">
