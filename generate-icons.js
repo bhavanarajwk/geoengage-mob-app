@@ -46,12 +46,16 @@ const ePath = `
   Z
 `;
 
-// Create complete SVG
+// Create complete SVG with padding
 /**
  * @param {number} size
  * @returns {string}
  */
 function createSVG(size) {
+  // Add 20% padding on all sides
+  const padding = 0.20; // 20% padding
+  const scale = 1 - (padding * 2); // Scale down to 60% to leave room for padding
+  
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${size}" height="${size}" viewBox="0 0 230 230" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -60,17 +64,20 @@ function createSVG(size) {
       <stop offset="100%" style="stop-color:#06B6D4;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="230" height="230" fill="white"/>
-  <g>
-    <!-- Shadow layer -->
-    <path d="${gPath}" fill="rgba(139, 92, 246, 0.3)" transform="translate(2, 2)" />
-    <path d="${ePath}" fill="rgba(6, 182, 212, 0.3)" transform="translate(2, 2)" />
+  <!-- Background - dark theme matching app (#0d1117) -->
+  <rect width="230" height="230" fill="#0d1117"/>
+  
+  <!-- Logo group with padding and proper centering -->
+  <g transform="translate(${230 * padding}, ${230 * padding}) scale(${scale})">
+    <!-- Shadow layer for depth -->
+    <path d="${gPath}" fill="rgba(139, 92, 246, 0.2)" transform="translate(3, 3)" />
+    <path d="${ePath}" fill="rgba(6, 182, 212, 0.2)" transform="translate(3, 3)" />
     
     <!-- Main letters -->
     <path d="${gPath}" fill="url(#logoGradient)" />
     <path d="${ePath}" fill="url(#logoGradient)" />
     
-    <!-- Blue dot -->
+    <!-- Blue dot (location pin) -->
     <circle cx="58" cy="100" r="12" fill="#06B6D4" />
     <circle cx="58" cy="100" r="6" fill="#FFFFFF" />
   </g>
