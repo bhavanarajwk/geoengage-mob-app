@@ -395,6 +395,27 @@ export default function MapScreen({ navigation }) {
                         console.error('[MapScreen] Error checking Bluetooth on resume:', error);
                     }
                 }
+
+                // Request fresh location fix to update blue dot position immediately
+                try {
+                    const location = await IndoorAtlasService.getCurrentLocation();
+                    console.log('[MapScreen] Fresh location on resume:', {
+                        pixelX: location.pixelX,
+                        pixelY: location.pixelY,
+                        accuracy: location.accuracy
+                    });
+                    if (location.pixelX !== undefined && location.pixelY !== undefined) {
+                        // Only accept position if accuracy is good (<=10m)
+                        if (location.accuracy === undefined || location.accuracy <= 10) {
+                            setPosition({ x: location.pixelX, y: location.pixelY });
+                            if (location.accuracy !== undefined) setAccuracy(location.accuracy);
+                        } else {
+                            console.log('[MapScreen] Rejecting resume location - accuracy too low:', location.accuracy);
+                        }
+                    }
+                } catch (error) {
+                    console.error('[MapScreen] Error getting fresh location on resume:', error);
+                }
             }
         };
 
@@ -605,8 +626,15 @@ export default function MapScreen({ navigation }) {
                         setAccuracy(location.accuracy);
                     }
                     // Only update position if we have pixel coordinates from IndoorAtlas
+                    // AND accuracy is acceptable (<=10m) to filter out garbage positions
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
-                        setPosition({ x: location.pixelX, y: location.pixelY });
+                        const accuracyOk = location.accuracy === undefined || location.accuracy <= 10;
+                        if (accuracyOk) {
+                            setPosition({ x: location.pixelX, y: location.pixelY });
+                        } else {
+                            // Log rejected positions for debugging
+                            console.log('[MapScreen] Rejecting low accuracy position:', location.accuracy, 'm');
+                        }
                     }
                     // Note: lat/lng fallback removed - we only show position when properly calibrated
                 });
