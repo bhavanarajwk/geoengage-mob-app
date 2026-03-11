@@ -52,6 +52,8 @@ export default function MapScreen({ navigation }) {
     const [bannerQueue, setBannerQueue] = useState([]);
     const [currentBanner, setCurrentBanner] = useState(null);
     const [isOnline, setIsOnline] = useState(true);
+    const [isBluetoothOn, setIsBluetoothOn] = useState(true); // Assume on initially
+    const [isLocationOn, setIsLocationOn] = useState(true); // Track location services status
     const [accuracy, setAccuracy] = useState(5);
     const alert = useCustomAlert();
 
@@ -368,7 +370,7 @@ export default function MapScreen({ navigation }) {
         // Re-register token when app comes to foreground
         const handleAppStateChange = async (nextAppState) => {
             if (nextAppState === 'active') {
-                console.log('[MapScreen] App resumed - checking FCM token...');
+                console.log('[MapScreen] App resumed - checking FCM token and Bluetooth...');
                 try {
                     const currentToken = await FCMService.requestPermissionAndGetToken();
                     if (currentToken) {
@@ -381,6 +383,17 @@ export default function MapScreen({ navigation }) {
                     }
                 } catch (error) {
                     console.error('[MapScreen] Error checking FCM token on resume:', error);
+                }
+
+                // Check Bluetooth state on app resume (Android only)
+                if (Platform.OS === 'android') {
+                    try {
+                        const btEnabled = await IndoorAtlasService.isBluetoothEnabled();
+                        console.log('[MapScreen] Bluetooth state on resume:', btEnabled);
+                        setIsBluetoothOn(btEnabled);
+                    } catch (error) {
+                        console.error('[MapScreen] Error checking Bluetooth on resume:', error);
+                    }
                 }
             }
         };
@@ -405,21 +418,45 @@ export default function MapScreen({ navigation }) {
         let floorPlanUnsubscribe = null;
         let geofenceEnterUnsubscribe = null;
         let geofenceExitUnsubscribe = null;
+        let bluetoothStateUnsubscribe = null;
 
         const requestLocationPermissions = async () => {
             if (Platform.OS !== 'android') return true;
             try {
-                console.log('[MapScreen] Requesting location permissions...');
+                console.log('[MapScreen] Requesting location and Bluetooth permissions...');
 
-                const granted = await PermissionsAndroid.requestMultiple([
+                // Build permission list - Bluetooth permissions required for Android 12+ (API 31+)
+                const permissionsToRequest = [
                     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
                     PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-                ]);
+                ];
+
+                // Add Bluetooth permissions for Android 12+ (required for BLE beacon scanning)
+                if (Platform.Version >= 31) {
+                    permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN);
+                    permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT);
+                }
+
+                const granted = await PermissionsAndroid.requestMultiple(permissionsToRequest);
                 
-                console.log('[MapScreen] Location permission result:', granted);
+                console.log('[MapScreen] Permission results:', granted);
                 
                 const fineGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
                 const coarseGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
+
+                // Log Bluetooth permission status (Android 12+)
+                if (Platform.Version >= 31) {
+                    const btScanGranted = granted[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === PermissionsAndroid.RESULTS.GRANTED;
+                    const btConnectGranted = granted[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED;
+                    console.log('[MapScreen] Bluetooth permissions - SCAN:', btScanGranted, 'CONNECT:', btConnectGranted);
+                    
+                    // Warn if Bluetooth permissions denied (positioning will degrade)
+                    if (!btScanGranted || !btConnectGranted) {
+                        console.warn('[MapScreen] Bluetooth permissions denied - beacon scanning disabled');
+                        // Set BT off to show warning banner
+                        setIsBluetoothOn(false);
+                    }
+                }
 
                 if (fineGranted || coarseGranted) {
                     console.log('[MapScreen] Location permission granted');
@@ -466,13 +503,38 @@ export default function MapScreen({ navigation }) {
                     return; 
                 }
 
+                // Check Bluetooth state and request enable if needed (Android only)
+                if (Platform.OS === 'android') {
+                    const btEnabled = await IndoorAtlasService.isBluetoothEnabled();
+                    console.log('[MapScreen] Bluetooth enabled:', btEnabled);
+                    setIsBluetoothOn(btEnabled);
+                    
+                    if (!btEnabled) {
+                        // Request user to enable Bluetooth (shows system dialog)
+                        console.log('[MapScreen] Requesting Bluetooth enable...');
+                        const userEnabledBt = await IndoorAtlasService.requestEnableBluetooth();
+                        setIsBluetoothOn(userEnabledBt);
+                        
+                        if (!userEnabledBt) {
+                            console.warn('[MapScreen] User declined to enable Bluetooth');
+                            // Don't block - just show warning banner (handled by state)
+                        }
+                    }
+                }
+
                 console.log('[MapScreen] Initializing IndoorAtlas SDK...');
                 await IndoorAtlasService.initialize();
                 console.log('[MapScreen] IndoorAtlas SDK initialized successfully');
                 setIsInitializing(false);
 
                 floorPlanUnsubscribe = IndoorAtlasService.onFloorPlanChanged((fp) => { if (!isActive) return; setFloorPlan(fp); });
-                statusUnsubscribe = IndoorAtlasService.onStatusChanged((s) => { if (!isActive) return; });
+                statusUnsubscribe = IndoorAtlasService.onStatusChanged((status) => {
+                    if (!isActive) return;
+                    console.log('[MapScreen] IndoorAtlas status changed:', status.statusText);
+                    // Track location availability - OUT_OF_SERVICE means location is off
+                    const locationAvailable = status.statusText !== 'OUT_OF_SERVICE' && status.statusText !== 'TEMPORARILY_UNAVAILABLE';
+                    setIsLocationOn(locationAvailable);
+                });
 
                 geofenceEnterUnsubscribe = IndoorAtlasService.onGeofenceEnter((region) => {
                     if (!isActive) return;
@@ -559,6 +621,15 @@ export default function MapScreen({ navigation }) {
                     }, 5000);
                 }
 
+                // Subscribe to Bluetooth state changes (Android only)
+                if (Platform.OS === 'android') {
+                    bluetoothStateUnsubscribe = IndoorAtlasService.onBluetoothStateChanged((state) => {
+                        if (!isActive) return;
+                        console.log('[MapScreen] Bluetooth state changed:', state.enabled);
+                        setIsBluetoothOn(state.enabled);
+                    });
+                }
+
             } catch (error) {
                 console.error('[MapScreen] Fatal error during IndoorAtlas initialization:', error);
                 setIsInitializing(false);
@@ -575,7 +646,7 @@ export default function MapScreen({ navigation }) {
 
         return () => {
             isActive = false;
-            [locationUnsubscribe, statusUnsubscribe, floorPlanUnsubscribe, geofenceEnterUnsubscribe, geofenceExitUnsubscribe]
+            [locationUnsubscribe, statusUnsubscribe, floorPlanUnsubscribe, geofenceEnterUnsubscribe, geofenceExitUnsubscribe, bluetoothStateUnsubscribe]
                 .forEach(u => u?.remove?.());
             IndoorAtlasService.stopPositioning().catch((error) => {
                 console.error('[MapScreen] Error stopping IndoorAtlas positioning during cleanup:', error);
@@ -691,6 +762,39 @@ export default function MapScreen({ navigation }) {
                     <Icon name="wifi-off" size={16} color="#f59e0b" />
                     <Text style={styles.offlineBannerText}>You're offline</Text>
                 </View>
+            )}
+
+            {/* ── Bluetooth Off Banner ───────────────────────────────────── */}
+            {Platform.OS === 'android' && !isBluetoothOn && (
+                <TouchableOpacity 
+                    style={styles.bluetoothBanner}
+                    onPress={async () => {
+                        const enabled = await IndoorAtlasService.requestEnableBluetooth();
+                        setIsBluetoothOn(enabled);
+                    }}
+                    activeOpacity={0.8}
+                >
+                    <Icon name="bluetooth-off" size={16} color="#f43f5e" />
+                    <Text style={styles.bluetoothBannerText}>
+                        Bluetooth off — positioning accuracy reduced
+                    </Text>
+                    <Icon name="chevron-right" size={16} color="#f43f5e" />
+                </TouchableOpacity>
+            )}
+
+            {/* ── Location Off Banner ────────────────────────────────────── */}
+            {!isLocationOn && (
+                <TouchableOpacity 
+                    style={styles.locationBanner}
+                    onPress={() => Linking.openSettings()}
+                    activeOpacity={0.8}
+                >
+                    <Icon name="crosshairs-off" size={16} color="#ef4444" />
+                    <Text style={styles.locationBannerText}>
+                        Location services off — positioning unavailable
+                    </Text>
+                    <Icon name="chevron-right" size={16} color="#ef4444" />
+                </TouchableOpacity>
             )}
 
             {/* ── Header ─────────────────────────────────────────────────── */}
@@ -970,6 +1074,46 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#f59e0b',
         fontWeight: '600',
+    },
+
+    // ── Bluetooth Banner ──
+    bluetoothBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 12,
+        marginHorizontal: -16,
+        marginBottom: 8,
+        backgroundColor: 'rgba(244, 63, 94, 0.1)',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(244, 63, 94, 0.25)',
+    },
+    bluetoothBannerText: {
+        fontSize: 13,
+        color: '#f43f5e',
+        fontWeight: '600',
+        flex: 1,
+    },
+
+    // ── Location Banner ──
+    locationBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 12,
+        marginHorizontal: -16,
+        marginBottom: 8,
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(239, 68, 68, 0.25)',
+    },
+    locationBannerText: {
+        fontSize: 13,
+        color: '#ef4444',
+        fontWeight: '600',
+        flex: 1,
     },
 
     // ── Header ──

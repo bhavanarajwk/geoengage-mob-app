@@ -123,6 +123,41 @@ class IndoorAtlasService {
   }
 
   /**
+   * Subscribe to Bluetooth state changes
+   * @param {function} callback - Function called when Bluetooth state changes
+   * @returns {Object} Subscription object with remove() method
+   */
+  static onBluetoothStateChanged(callback) {
+    return eventEmitter.addListener('onBluetoothStateChanged', callback);
+  }
+
+  /**
+   * Check if Bluetooth is enabled
+   * @returns {Promise<boolean>} True if Bluetooth is enabled
+   */
+  static async isBluetoothEnabled() {
+    try {
+      return await IndoorAtlas.isBluetoothEnabled();
+    } catch (error) {
+      console.error('[IndoorAtlas] Error checking Bluetooth state:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Request user to enable Bluetooth (shows system dialog)
+   * @returns {Promise<boolean>} True if user enabled Bluetooth, false if declined
+   */
+  static async requestEnableBluetooth() {
+    try {
+      return await IndoorAtlas.requestEnableBluetooth();
+    } catch (error) {
+      console.error('[IndoorAtlas] Error requesting Bluetooth enable:', error);
+      return false;
+    }
+  }
+
+  /**
    * Remove all event listeners (call in cleanup)
    */
   static removeAllListeners() {
@@ -131,6 +166,7 @@ class IndoorAtlasService {
     eventEmitter.removeAllListeners('onGeofenceExit');
     eventEmitter.removeAllListeners('onStatusChanged');
     eventEmitter.removeAllListeners('onFloorPlanChanged');
+    eventEmitter.removeAllListeners('onBluetoothStateChanged');
   }
 }
 
