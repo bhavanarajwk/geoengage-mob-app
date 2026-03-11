@@ -241,6 +241,40 @@ class IndoorAtlasService {
   }
 
   /**
+   * Subscribe to Bluetooth state changes
+   * @param {Function} callback - Called when Bluetooth state changes (enabled/disabled)
+   * @returns {Object} Subscription object with remove() method
+   */
+  onBluetoothStateChanged(callback) {
+    const subscription = IndoorAtlas.onBluetoothStateChanged((state) => {
+      console.log('[IndoorAtlasService] Bluetooth state changed:', state.enabled ? 'ON' : 'OFF');
+      callback(state);
+    });
+
+    this.subscriptions.push(subscription);
+    return subscription;
+  }
+
+  /**
+   * Check if Bluetooth is enabled
+   * @returns {Promise<boolean>} True if Bluetooth is enabled
+   */
+  async isBluetoothEnabled() {
+    return await IndoorAtlas.isBluetoothEnabled();
+  }
+
+  /**
+   * Request user to enable Bluetooth (shows system dialog)
+   * @returns {Promise<boolean>} True if user enabled Bluetooth, false if declined
+   */
+  async requestEnableBluetooth() {
+    console.log('[IndoorAtlasService] Requesting Bluetooth enable...');
+    const result = await IndoorAtlas.requestEnableBluetooth();
+    console.log('[IndoorAtlasService] Bluetooth enable result:', result);
+    return result;
+  }
+
+  /**
    * Remove all event subscriptions and cleanup
    */
   cleanup() {

@@ -1,6 +1,12 @@
 package com.geoengage.indooratlas;
 
 import android.Manifest;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -11,7 +17,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.annotation.Nullable;
 
+import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.BaseActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -49,10 +57,73 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     private static final String EVENT_GEOFENCE_ENTER = "onGeofenceEnter";
     private static final String EVENT_GEOFENCE_EXIT = "onGeofenceExit";
     private static final String EVENT_STATUS_CHANGED = "onStatusChanged";
+    private static final String EVENT_BLUETOOTH_STATE_CHANGED = "onBluetoothStateChanged";
+    
+    // Bluetooth
+    private static final int REQUEST_ENABLE_BT = 1001;
+    private BluetoothAdapter bluetoothAdapter;
+    private Promise enableBluetoothPromise;
+    private BroadcastReceiver bluetoothStateReceiver;
     
     public IndoorAtlasModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
+        
+        // Initialize Bluetooth adapter
+        BluetoothManager bluetoothManager = (BluetoothManager) reactContext.getSystemService(Context.BLUETOOTH_SERVICE);
+        if (bluetoothManager != null) {
+            bluetoothAdapter = bluetoothManager.getAdapter();
+        }
+        
+        // Register Bluetooth state change receiver
+        registerBluetoothStateReceiver();
+        
+        // Add activity event listener for enable Bluetooth result
+        reactContext.addActivityEventListener(activityEventListener);
+    }
+    
+    /**
+     * Activity event listener for handling Bluetooth enable dialog result
+     */
+    private final ActivityEventListener activityEventListener = new BaseActivityEventListener() {
+        @Override
+        public void onActivityResult(android.app.Activity activity, int requestCode, int resultCode, Intent data) {
+            if (requestCode == REQUEST_ENABLE_BT && enableBluetoothPromise != null) {
+                if (resultCode == android.app.Activity.RESULT_OK) {
+                    Log.d(TAG, "User enabled Bluetooth");
+                    enableBluetoothPromise.resolve(true);
+                } else {
+                    Log.d(TAG, "User declined to enable Bluetooth");
+                    enableBluetoothPromise.resolve(false);
+                }
+                enableBluetoothPromise = null;
+            }
+        }
+    };
+    
+    /**
+     * Register broadcast receiver for Bluetooth state changes
+     */
+    private void registerBluetoothStateReceiver() {
+        bluetoothStateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(intent.getAction())) {
+                    int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+                    boolean isEnabled = (state == BluetoothAdapter.STATE_ON);
+                    
+                    Log.d(TAG, "Bluetooth state changed: " + (isEnabled ? "ON" : "OFF"));
+                    
+                    WritableMap params = Arguments.createMap();
+                    params.putBoolean("enabled", isEnabled);
+                    params.putInt("state", state);
+                    sendEvent(EVENT_BLUETOOTH_STATE_CHANGED, params);
+                }
+            }
+        };
+        
+        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        reactContext.registerReceiver(bluetoothStateReceiver, filter);
     }
     
     @NonNull
@@ -444,6 +515,67 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
     }
     
     /**
+     * Check if Bluetooth is enabled
+     */
+    @ReactMethod
+    public void isBluetoothEnabled(Promise promise) {
+        try {
+            if (bluetoothAdapter == null) {
+                Log.w(TAG, "Bluetooth not supported on this device");
+                promise.resolve(false);
+                return;
+            }
+            
+            boolean enabled = bluetoothAdapter.isEnabled();
+            Log.d(TAG, "Bluetooth enabled: " + enabled);
+            promise.resolve(enabled);
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking Bluetooth state: " + e.getMessage());
+            promise.reject("BT_ERROR", "Failed to check Bluetooth state: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Request user to enable Bluetooth (shows system dialog)
+     */
+    @ReactMethod
+    public void requestEnableBluetooth(Promise promise) {
+        try {
+            if (bluetoothAdapter == null) {
+                Log.w(TAG, "Bluetooth not supported on this device");
+                promise.resolve(false);
+                return;
+            }
+            
+            if (bluetoothAdapter.isEnabled()) {
+                Log.d(TAG, "Bluetooth already enabled");
+                promise.resolve(true);
+                return;
+            }
+            
+            android.app.Activity currentActivity = getCurrentActivity();
+            if (currentActivity == null) {
+                Log.e(TAG, "No current activity to show Bluetooth enable dialog");
+                promise.reject("NO_ACTIVITY", "Cannot show Bluetooth dialog without activity");
+                return;
+            }
+            
+            // Store promise to resolve in activity result callback
+            enableBluetoothPromise = promise;
+            
+            // Show system dialog to enable Bluetooth
+            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            currentActivity.startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+            Log.d(TAG, "Showed Bluetooth enable dialog");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error requesting Bluetooth enable: " + e.getMessage());
+            enableBluetoothPromise = null;
+            promise.reject("BT_ERROR", "Failed to request Bluetooth enable: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
      * Cleanup when module is destroyed
      */
     @Override
@@ -457,6 +589,19 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
             locationManager.destroy();
             locationManager = null;
         }
+        
+        // Unregister Bluetooth state receiver
+        if (bluetoothStateReceiver != null) {
+            try {
+                reactContext.unregisterReceiver(bluetoothStateReceiver);
+            } catch (Exception e) {
+                Log.w(TAG, "Error unregistering Bluetooth receiver: " + e.getMessage());
+            }
+            bluetoothStateReceiver = null;
+        }
+        
+        // Remove activity event listener
+        reactContext.removeActivityEventListener(activityEventListener);
         
         isPositioning = false;
         Log.d(TAG, "Indoor Atlas Module destroyed");
