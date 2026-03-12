@@ -149,6 +149,10 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                 // Create location manager with credentials
                 locationManager = IALocationManager.create(reactContext, credentials);
                 
+                // Lock to indoor positioning only - prevents GPS fallback that causes random jumps
+                locationManager.lockIndoors(true);
+                Log.d(TAG, "[DEBUG] lockIndoors(true) enabled - using only indoor signals");
+                
                 // Register region listener for geofencing
                 locationManager.registerRegionListener(regionListener);
                 
@@ -190,12 +194,12 @@ public class IndoorAtlasModule extends ReactContextBaseJavaModule {
                 
                 Log.d(TAG, "[DEBUG] ✅ Location permissions granted");
                 
-                // Request location updates with high accuracy
+                // Request location updates with high accuracy and fast response
                 IALocationRequest request = IALocationRequest.create();
-                request.setFastestInterval(1000); // 1 second
-                request.setSmallestDisplacement(0.5f); // 0.5 meters
+                request.setFastestInterval(100); // 100ms = 10 updates/second for smooth tracking
+                request.setSmallestDisplacement(0.3f); // 0.3 meters - responsive to small movements
                 
-                Log.d(TAG, "[DEBUG] Requesting location updates...");
+                Log.d(TAG, "[DEBUG] Requesting location updates (interval=100ms, displacement=0.3m)...");
                 boolean success = locationManager.requestLocationUpdates(request, locationListener);
                 
                 if (!success) {

@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
 
 /**
- * BlueDot - Animated position indicator
+ * BlueDot - Animated position indicator with smooth position transitions
  * Shows user's current location on the floor plan
  * 
  * Props:
@@ -15,6 +15,38 @@ import { View, Animated, StyleSheet } from 'react-native';
 const BlueDot = ({ x, y, size = 20, animated = true, accuracy = 5 }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0.3)).current;
+  
+  // Position animation refs - smooth transitions between positions
+  const animatedX = useRef(new Animated.Value(x || 0)).current;
+  const animatedY = useRef(new Animated.Value(y || 0)).current;
+  const isFirstRender = useRef(true);
+
+  // Animate position changes for smooth blue dot movement
+  useEffect(() => {
+    if (x === null || x === undefined || y === null || y === undefined) return;
+    
+    // Skip animation on first render - just set the position
+    if (isFirstRender.current) {
+      animatedX.setValue(x);
+      animatedY.setValue(y);
+      isFirstRender.current = false;
+      return;
+    }
+    
+    // Animate to new position with smooth timing
+    Animated.parallel([
+      Animated.timing(animatedX, {
+        toValue: x,
+        duration: 150, // Smooth 150ms transition
+        useNativeDriver: false, // Can't use native driver for left/top
+      }),
+      Animated.timing(animatedY, {
+        toValue: y,
+        duration: 150,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [x, y, animatedX, animatedY]);
 
   useEffect(() => {
     if (!animated) return;
@@ -69,12 +101,12 @@ const BlueDot = ({ x, y, size = 20, animated = true, accuracy = 5 }) => {
   const accuracyScale = Math.min(Math.max(accuracy / 5, 1), 2.5);
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.container,
         {
-          left: x - size / 2,
-          top: y - size / 2,
+          left: Animated.subtract(animatedX, size / 2),
+          top: Animated.subtract(animatedY, size / 2),
         },
       ]}
     >
@@ -118,7 +150,7 @@ const BlueDot = ({ x, y, size = 20, animated = true, accuracy = 5 }) => {
           ]}
         />
       </View>
-    </View>
+    </Animated.View>
   );
 };
 

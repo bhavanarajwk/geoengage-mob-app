@@ -14,10 +14,10 @@ export const INDOOR_ATLAS_CONFIG = {
  */
 export const INDOOR_ATLAS_SETTINGS = {
   // Location update interval (milliseconds)
-  updateInterval: 1000, // 1 second
+  updateInterval: 100, // 1 second
   
   // Minimum displacement for updates (meters)
-  minDisplacement: 0.5,
+  minDisplacement: 0.3,
   
   // Enable automatic floor detection
   autoFloorDetection: true,

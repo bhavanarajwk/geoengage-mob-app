@@ -78,7 +78,7 @@ export default function IndoorMapView({ floorPlan, userLocation }: Props) {
         const scrollX = Math.max(0, scaledX - (viewportSize.width / 2));
         scrollViewRef.current?.scrollTo({ x: scrollX, animated: true });
       }
-    }, 150);
+    }, 50);
 
     return () => {
       if (autoScrollTimer.current) {

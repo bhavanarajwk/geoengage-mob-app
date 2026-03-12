@@ -395,6 +395,27 @@ export default function MapScreen({ navigation }) {
                         console.error('[MapScreen] Error checking Bluetooth on resume:', error);
                     }
                 }
+
+                // Request fresh location fix to update blue dot position immediately
+                try {
+                    const location = await IndoorAtlasService.getCurrentLocation();
+                    console.log('[MapScreen] Fresh location on resume:', {
+                        pixelX: location.pixelX,
+                        pixelY: location.pixelY,
+                        accuracy: location.accuracy
+                    });
+                    if (location.pixelX !== undefined && location.pixelY !== undefined) {
+                        // Only accept position if accuracy is good (<=10m)
+                        if (location.accuracy === undefined || location.accuracy <= 10) {
+                            setPosition({ x: location.pixelX, y: location.pixelY });
+                            if (location.accuracy !== undefined) setAccuracy(location.accuracy);
+                        } else {
+                            console.log('[MapScreen] Rejecting resume location - accuracy too low:', location.accuracy);
+                        }
+                    }
+                } catch (error) {
+                    console.error('[MapScreen] Error getting fresh location on resume:', error);
+                }
             }
         };
 
@@ -605,8 +626,15 @@ export default function MapScreen({ navigation }) {
                         setAccuracy(location.accuracy);
                     }
                     // Only update position if we have pixel coordinates from IndoorAtlas
+                    // AND accuracy is acceptable (<=10m) to filter out garbage positions
                     if (location.pixelX !== undefined && location.pixelY !== undefined) {
-                        setPosition({ x: location.pixelX, y: location.pixelY });
+                        const accuracyOk = location.accuracy === undefined || location.accuracy <= 10;
+                        if (accuracyOk) {
+                            setPosition({ x: location.pixelX, y: location.pixelY });
+                        } else {
+                            // Log rejected positions for debugging
+                            console.log('[MapScreen] Rejecting low accuracy position:', location.accuracy, 'm');
+                        }
                     }
                     // Note: lat/lng fallback removed - we only show position when properly calibrated
                 });
@@ -965,80 +993,55 @@ export default function MapScreen({ navigation }) {
                 </View>
             </View>
 
-            {/* ── Transaction Floating Action Button ─────────────────────── */}
-            {currentZone && !transactionRecorded && (
-                <Animated.View
-                    style={[
-                        styles.transactionFab,
-                        {
-                            opacity: transactionFabAnim,
-                            transform: [{
-                                scale: transactionFabAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [0.8, 1],
-                                }),
-                            }, {
-                                translateY: transactionFabAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [20, 0],
-                                }),
-                            }],
-                        },
-                    ]}
-                >
-                    <TouchableOpacity
-                        style={styles.transactionFabButton}
-                        onPress={handleRecordTransaction}
-                        disabled={transactionLoading}
-                        activeOpacity={0.85}
-                    >
-                        {transactionLoading ? (
-                            <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                            <Icon name="cart-check" size={20} color="#ffffff" />
-                        )}
-                        <Text style={styles.transactionFabText}>
-                            {transactionLoading ? 'Recording...' : 'Record Transaction'}
-                        </Text>
-                    </TouchableOpacity>
-                </Animated.View>
-            )}
-
-            {/* ── Transaction Success Toast ──────────────────────────────── */}
-            {showTransactionSuccess && (
-                <Animated.View
-                    style={[
-                        styles.transactionSuccessToast,
-                        {
-                            opacity: transactionFabAnim,
-                        },
-                    ]}
-                >
-                    <Icon name="check-circle" size={20} color="#22c55e" />
-                    <Text style={styles.transactionSuccessText}>Transaction Complete</Text>
-                </Animated.View>
-            )}
-
             {/* ── Status chips ────────────────────────────────────────────── */}
             <View style={styles.statusRow}>
                 {statusChips.map((chip, i) => (
                     <View key={i} style={[styles.statusChip, chip.active && styles.statusChipActive]}>
                         <View style={[styles.statusDot, chip.active && styles.statusDotActive]} />
                         <Icon name={chip.icon} size={11} color={chip.active ? '#22c55e' : '#4a5568'} />
-                        <Text style={[styles.statusText, chip.active && styles.statusTextActive]}>
+                        <Text 
+                            style={[styles.statusText, chip.active && styles.statusTextActive]}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                        >
                             {chip.label}
                         </Text>
                     </View>
                 ))}
             </View>
 
-            {__DEV__ && (
+            {/* ── Transaction Button (always visible, enabled only in zone) ── */}
+            {showTransactionSuccess ? (
+                <View style={styles.transactionSuccessButton}>
+                    <Icon name="check-circle" size={18} color="#22c55e" />
+                    <Text style={styles.transactionSuccessButtonText}>Transaction Complete</Text>
+                </View>
+            ) : (
                 <TouchableOpacity
-                    style={styles.debugButton}
-                    onPress={handleSimulateConferenceZone}
+                    style={[
+                        styles.transactionButton,
+                        currentZone && !transactionRecorded && styles.transactionButtonActive,
+                        (!currentZone || transactionRecorded || transactionLoading) && styles.transactionButtonDisabled,
+                    ]}
+                    onPress={handleRecordTransaction}
+                    disabled={!currentZone || transactionRecorded || transactionLoading}
                     activeOpacity={0.85}
                 >
-                    <Text style={styles.debugButtonText}>Simulate Conference Room Event</Text>
+                    {transactionLoading ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                        <Icon 
+                            name="cart-check" 
+                            size={18} 
+                            color={currentZone && !transactionRecorded ? '#ffffff' : '#64748b'} 
+                        />
+                    )}
+                    <Text style={[
+                        styles.transactionButtonText,
+                        (!currentZone || transactionRecorded) && styles.transactionButtonTextDisabled,
+                    ]}>
+                        {transactionLoading ? 'Recording...' : 'Record Transaction'}
+                    </Text>
                 </TouchableOpacity>
             )}
 
@@ -1516,20 +1519,21 @@ const styles = StyleSheet.create({
     // ── Status chips ──
     statusRow: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
         gap: 6,
         justifyContent: 'center',
     },
     statusChip: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
         backgroundColor: '#131c2c',
         borderWidth: 1,
         borderColor: '#1e2d3d',
-        paddingHorizontal: 10,
+        paddingHorizontal: 8,
         paddingVertical: 5,
         borderRadius: 16,
+        maxWidth: '25%',
     },
     statusChipActive: {
         borderColor: 'rgba(34, 197, 94, 0.25)',
@@ -1548,68 +1552,66 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: '#4a5568',
         fontWeight: '500',
+        flexShrink: 1,
     },
     statusTextActive: {
         fontSize: 11,
         color: '#22c55e',
         fontWeight: '500',
+        flexShrink: 1,
     },
-    debugButton: {
+    // ── Transaction Button (always visible) ──
+    transactionButton: {
         marginTop: 10,
+        marginBottom: 8,
         alignSelf: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 24,
         backgroundColor: '#1e293b',
         borderWidth: 1,
         borderColor: '#334155',
     },
-    debugButtonText: {
-        fontSize: 12,
-        color: '#e2e8f0',
-        fontWeight: '500',
-    },
-
-    // ── Transaction FAB ──
-    transactionFab: {
-        alignSelf: 'center',
-        marginBottom: 12,
-    },
-    transactionFabButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
+    transactionButtonActive: {
         backgroundColor: '#4285F4',
-        paddingHorizontal: 20,
-        paddingVertical: 14,
-        borderRadius: 28,
-        elevation: 6,
+        borderColor: '#4285F4',
+        elevation: 4,
         shadowColor: '#4285F4',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
     },
-    transactionFabText: {
-        fontSize: 15,
-        fontWeight: '700',
+    transactionButtonDisabled: {
+        backgroundColor: '#1e293b',
+        borderColor: '#334155',
+        opacity: 0.7,
+    },
+    transactionButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
         color: '#ffffff',
-        letterSpacing: 0.3,
     },
-    transactionSuccessToast: {
+    transactionButtonTextDisabled: {
+        color: '#64748b',
+    },
+    transactionSuccessButton: {
+        marginTop: 10,
+        marginBottom: 8,
+        alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
         gap: 8,
-        alignSelf: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 24,
         backgroundColor: 'rgba(34, 197, 94, 0.12)',
         borderWidth: 1,
         borderColor: 'rgba(34, 197, 94, 0.3)',
-        paddingHorizontal: 18,
-        paddingVertical: 12,
-        borderRadius: 24,
-        marginBottom: 12,
     },
-    transactionSuccessText: {
+    transactionSuccessButtonText: {
         fontSize: 14,
         fontWeight: '600',
         color: '#22c55e',
